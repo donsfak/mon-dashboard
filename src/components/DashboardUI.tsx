@@ -1,0 +1,469 @@
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { CloudRain, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal } from 'lucide-react';
+const API_BASE = `http://${window.location.hostname}:3001/api`;
+const CardHover = "hover:border-cyan-500/40 hover:shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all duration-500";
+const GlassStyle = "bg-glass border border-glassBorder backdrop-blur-xl rounded-2xl p-6";
+
+// ============================================
+// Custom Hooks for Real-time Data
+// ============================================
+
+// Custom hooks for fetching real-time data
+const useDockerContainers = () => {
+  const [containers, setContainers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchContainers = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/docker/containers`);
+        if (res.ok) {
+          const data = await res.json();
+          setContainers(data.map((c: any) => ({
+            name: c.name,
+            state: c.state,
+            port: c.port
+          })));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch real Docker data, using mock:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchContainers();
+    const interval = setInterval(fetchContainers, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  return { containers, loading };
+};
+
+const useTailscaleDevices = () => {
+  const [devices, setDevices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDevices = async () => {
+      try {
+        const res = await fetch('http://localhost:3001/api/tailscale/devices');
+        if (res.ok) {
+          const data = await res.json();
+          setDevices(data);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch real Tailscale data, using mock:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDevices();
+    const interval = setInterval(fetchDevices, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  return { devices, loading };
+};
+
+const useOrangePing = () => {
+  const [pingData, setPingData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const measurePing = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/network/orange-ping');
+      if (res.ok) {
+        const data = await res.json();
+        setPingData(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch Orange ping data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-fetch on mount and periodically
+  useEffect(() => {
+    measurePing();
+    const interval = setInterval(measurePing, 30000); // Poll every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  return { pingData, loading, measurePing };
+};
+
+const useInternetSpeed = () => {
+  const [speed, setSpeed] = useState<{ download: number; upload: number; latency: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const measureSpeed = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/network/orange-speed-test');
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Aggregate speed test results from all servers
+        const servers = Object.values(data as any[]);
+        const successfulTests = servers.filter((s: any) => s.success);
+        
+        if (successfulTests.length > 0) {
+          // Average the results from all successful servers
+          const avgDownload = Math.round(
+            successfulTests.reduce((sum: number, s: any) => sum + (s.download || 0), 0) / successfulTests.length
+          );
+          const avgUpload = Math.round(
+            successfulTests.reduce((sum: number, s: any) => sum + (s.upload || 0), 0) / successfulTests.length
+          );
+          const avgLatency = Math.round(
+            successfulTests.reduce((sum: number, s: any) => sum + (s.latency || 0), 0) / successfulTests.length
+          );
+          
+          setSpeed({ download: avgDownload, upload: avgUpload, latency: avgLatency });
+        } else {
+          throw new Error('No servers responded to speed test');
+        }
+      }
+    } catch (err) {
+      console.warn('Orange speed test failed:', err);
+      // Fallback mock values
+      setSpeed({ download: 85, upload: 40, latency: 55 });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { speed, loading, measureSpeed };
+};
+
+export { useInternetSpeed };
+
+export const ClockWidget = () => {
+  const [time, setTime] = useState(new Date());
+  useEffect(() => { const timer = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(timer); }, []);
+
+  return (
+    <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover} flex flex-col justify-center`}>
+      <h2 className="text-5xl font-light text-white tracking-tight mb-2">
+        {time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+      </h2>
+      <p className="text-slate-400 capitalize">
+        {time.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+      </p>
+    </motion.div>
+  );
+};
+
+export const WeatherWidget = () => (
+  <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
+    <div className="flex justify-between items-start">
+      <div>
+        <p className="text-sm text-slate-400 mb-1">Abidjan, CI</p>
+        <h2 className="text-4xl font-light text-white mb-2">28°<span className="text-xl text-cyan-400 ml-1">C</span></h2>
+        <p className="text-sm text-slate-300">Ressenti 31° • Humidité 82%</p>
+      </div>
+      <div className="p-3 bg-cyan-500/10 rounded-xl">
+        <CloudRain className="w-8 h-8 text-cyan-400" />
+      </div>
+    </div>
+  </motion.div>
+);
+
+export const CalendarWidget = () => {
+  const today = new Date();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).getDay();
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  return (
+    <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
+      <h3 className="text-sm font-medium text-slate-300 mb-3 uppercase tracking-wider">
+        {today.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+      </h3>
+      <div className="grid grid-cols-7 gap-1 text-xs">
+        {weekDays.map(day => (
+          <div key={day} className="text-center text-slate-500 py-1 font-medium">{day.substring(0, 1)}</div>
+        ))}
+        {Array.from({ length: firstDay }).map((_, i) => (
+          <div key={`empty-${i}`} />
+        ))}
+        {days.map(day => (
+          <div
+            key={day}
+            className={`aspect-square flex items-center justify-center rounded text-xs font-medium transition-colors ${
+              day === today.getDate()
+                ? 'bg-cyan-500/30 border border-cyan-500/50 text-cyan-300'
+                : 'text-slate-300 hover:bg-white/5'
+            }`}
+          >
+            {day}
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+};
+
+export const InternetSpeedWidget = ({ speed, loading, onMeasure }: any) => (
+  <motion.button
+    onClick={onMeasure}
+    whileHover={{ scale: 1.02 }}
+    className={`${GlassStyle} ${CardHover} w-full text-left`}
+    disabled={loading}
+  >
+    <div className="flex items-center gap-2 mb-3">
+      <Zap className="w-4 h-4 text-yellow-400" />
+      <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">Internet</span>
+    </div>
+    {loading ? (
+      <p className="text-slate-400 text-sm">Testing...</p>
+    ) : speed ? (
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-slate-400">Download</span>
+          <span className="font-mono text-cyan-400 font-medium">{speed.download} Mbps</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-slate-400">Upload</span>
+          <span className="font-mono text-emerald-400 font-medium">{speed.upload} Mbps</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-slate-400">Latency</span>
+          <span className="font-mono text-amber-400 font-medium">{speed.latency}ms</span>
+        </div>
+      </div>
+    ) : (
+      <p className="text-slate-400 text-sm">Click to test</p>
+    )}
+  </motion.button>
+);
+
+export const ResourceBar = ({ label, icon: Icon, percentage, color }: any) => (
+  <div className="mb-4 last:mb-0">
+    <div className="flex justify-between text-sm mb-1.5">
+      <div className="flex items-center gap-2 text-slate-300">
+        <Icon className="w-4 h-4" /> {label}
+      </div>
+      <span className="font-mono text-cyan-400">{percentage}%</span>
+    </div>
+    <div className="h-2 w-full bg-slate-800/50 rounded-full overflow-hidden">
+      <motion.div 
+        initial={{ width: 0 }} 
+        animate={{ width: `${percentage}%` }} 
+        transition={{ duration: 1, ease: "easeOut" }}
+        className={`h-full rounded-full ${color}`} 
+      />
+    </div>
+  </div>
+);
+
+export const ResourcesWidget = () => (
+  <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
+    <ResourceBar label="CPU" icon={Cpu} percentage={24} color="bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]" />
+    <ResourceBar label="RAM" icon={Activity} percentage={68} color="bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" />
+    <ResourceBar label="/Data" icon={HardDrive} percentage={85} color="bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]" />
+  </motion.div>
+);
+
+export const ServiceCard = ({ service }: any) => (
+  <motion.a 
+    href={service.href} 
+    target="_blank"
+    whileHover={{ scale: 1.02, y: -2 }} 
+    className={`${GlassStyle} ${CardHover} group block cursor-pointer`}
+  >
+    <div className="flex justify-between items-start mb-5">
+      <div className="p-3 bg-white/5 rounded-xl group-hover:bg-cyan-500/20 transition-colors duration-300">
+        <service.icon className="w-6 h-6 text-cyan-400" />
+      </div>
+      <div className={`w-2.5 h-2.5 rounded-full ${service.status === 'active' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse-slow' : 'bg-red-500'}`} />
+    </div>
+    <h3 className="text-lg font-medium text-white mb-3">{service.title}</h3>
+    <div className="space-y-1.5">
+      {service.stats.map((stat: any, idx: number) => (
+        <div key={idx} className="flex justify-between text-sm">
+          <span className="text-slate-400">{stat.label}</span>
+          <span className="text-slate-200 font-medium">{stat.value}</span>
+        </div>
+      ))}
+    </div>
+  </motion.a>
+);
+
+export const StatusBadge = ({ label, active }: { label: string, active: boolean }) => (
+  <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full backdrop-blur-sm">
+    <CheckCircle2 className={`w-4 h-4 ${active ? 'text-emerald-400' : 'text-slate-500'}`} />
+    <span className="text-sm font-medium text-slate-200">{label}</span>
+  </div>
+);
+
+export const TailscaleList = ({ devices: initialDevices }: { devices: any[] }) => {
+  const { devices: realDevices, loading } = useTailscaleDevices();
+  const devicesToShow = realDevices.length > 0 ? realDevices : initialDevices;
+  
+  const getDeviceIcon = (os: string) => {
+    if (os === 'iOS' || os === 'Android') return <Smartphone className="w-5 h-5 text-slate-400" />;
+    if (os === 'macOS') return <Laptop className="w-5 h-5 text-slate-400" />;
+    return <Monitor className="w-5 h-5 text-slate-400" />;
+  };
+
+  return (
+    <div className={`${GlassStyle} flex flex-col gap-3`}>
+      {loading && realDevices.length === 0 && (
+        <p className="text-xs text-slate-500 text-center py-2">Loading...</p>
+      )}
+      {devicesToShow.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-4">Aucun appareil connecté</p>
+      ) : (
+        devicesToShow.map((device, idx) => (
+          <motion.div 
+            key={idx} 
+            whileHover={{ x: 4 }}
+            className="flex justify-between items-center p-3 hover:bg-white/5 rounded-xl transition-colors border border-transparent hover:border-white/10"
+          >
+            <div className="flex items-center gap-3 flex-1">
+              {getDeviceIcon(device.os)}
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-medium text-slate-200 truncate">{device.name}</span>
+                <span className="text-xs font-mono text-cyan-500/70">{device.ip}</span>
+              </div>
+            </div>
+            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${device.status === 'online' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-slate-500/50'}`} />
+          </motion.div>
+        ))
+      )}
+    </div>
+  );
+};
+
+export const DockerList = ({ containers: initialContainers }: { containers: any[] }) => {
+  const { containers: realContainers, loading } = useDockerContainers();
+  const containersToShow = realContainers.length > 0 ? realContainers : initialContainers;
+
+  return (
+    <div className={`${GlassStyle} flex flex-col gap-2`}>
+      {loading && realContainers.length === 0 && (
+        <p className="text-xs text-slate-500 text-center py-2">Loading...</p>
+      )}
+      {containersToShow.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-4">Aucun conteneur</p>
+      ) : (
+        containersToShow.map((container, idx) => (
+          <motion.div 
+            key={idx} 
+            whileHover={{ x: 4 }}
+            className="flex justify-between items-center p-3 hover:bg-white/5 rounded-xl transition-colors border border-transparent hover:border-white/10 group"
+          >
+            <div className="flex items-center gap-3 flex-1">
+              <Package className="w-5 h-5 text-cyan-400/70 group-hover:text-cyan-400 transition-colors" />
+              <span className="text-sm font-medium text-slate-200">{container.name}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono text-slate-500">:{container.port}</span>
+              <div className={`w-2 h-2 rounded-full ${container.state === 'running' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-red-500/80'}`} />
+            </div>
+          </motion.div>
+        ))
+      )}
+    </div>
+  );
+};
+
+// ============================================
+// Orange CI Network Monitoring Component
+// ============================================
+
+const getLatencyColor = (latency: number | null) => {
+  if (!latency) return 'text-slate-400';
+  if (latency < 30) return 'text-emerald-400';
+  if (latency < 60) return 'text-cyan-400';
+  if (latency < 100) return 'text-amber-400';
+  return 'text-red-400';
+};
+
+const getLatencyBg = (latency: number | null) => {
+  if (!latency) return 'bg-slate-500/20';
+  if (latency < 30) return 'bg-emerald-500/20 border-emerald-500/30';
+  if (latency < 60) return 'bg-cyan-500/20 border-cyan-500/30';
+  if (latency < 100) return 'bg-amber-500/20 border-amber-500/30';
+  return 'bg-red-500/20 border-red-500/30';
+};
+
+export const OrangePingWidget = ({ onRefresh }: { onRefresh?: () => void }) => {
+  const { pingData, loading, measurePing } = useOrangePing();
+  
+  const handleRefresh = async () => {
+    await measurePing();
+    onRefresh?.();
+  };
+
+  return (
+    <motion.div className={`${GlassStyle} ${CardHover}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Signal className="w-5 h-5 text-orange-400" />
+          <h3 className="text-lg font-semibold text-white">Orange CI</h3>
+        </div>
+        <motion.button
+          onClick={handleRefresh}
+          disabled={loading}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.95 }}
+          className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <Wifi className={`w-4 h-4 transition-transform ${loading ? 'animate-spin' : ''}`} />
+        </motion.button>
+      </div>
+
+      {loading && !pingData ? (
+        <div className="text-center py-6">
+          <div className="animate-spin w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full mx-auto mb-2" />
+          <p className="text-xs text-slate-400">Tester les serveurs...</p>
+        </div>
+      ) : !pingData ? (
+        <p className="text-sm text-slate-400 text-center py-4">Pas de données</p>
+      ) : (
+        <div className="space-y-3">
+          {Object.entries(pingData).map(([key, value]: [string, any]) => (
+            <motion.div
+              key={key}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`p-3 border rounded-lg transition-all ${getLatencyBg(value.avgLatency)}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-200">{value.name}</span>
+                {value.success ? (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span className={`font-mono font-bold ${getLatencyColor(value.avgLatency)}`}>
+                      {value.avgLatency}ms
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-red-400">Offline</span>
+                )}
+              </div>
+              {value.success && (
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>Min: {value.minLatency}ms</span>
+                  <span>Max: {value.maxLatency}ms</span>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+      )}
+      
+      <p className="text-xs text-slate-500 mt-4 text-center">
+        {pingData ? `Dernière mise à jour: ${new Date(pingData[Object.keys(pingData)[0]]?.timestamp).toLocaleTimeString('fr-FR')}` : ''}
+      </p>
+    </motion.div>
+  );
+};

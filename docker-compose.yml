@@ -1,0 +1,148 @@
+version: '3.9'
+
+services:
+  # ============================================
+  # Main Dashboard Service
+  # ============================================
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    
+    container_name: mediahub-dashboard
+    user: "root"
+    restart: unless-stopped
+    
+    # Networking
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"      # React frontend
+      - "${API_PORT:-3001}:3001"            # Express API
+    
+    environment:
+      # Node
+      NODE_ENV: production
+      
+      # API Configuration
+      API_PORT: ${API_PORT:-3001}
+      API_HOST: 0.0.0.0
+      DOCKER_SOCK: /var/run/docker.sock
+      
+      # Tailscale (set in .env)
+      TAILSCALE_API_KEY: ${TAILSCALE_API_KEY:-}
+      TAILSCALE_TAILNET: ${TAILSCALE_TAILNET:-}
+      
+      # Orange CI / Network Testing
+      ORANGE_TIMEOUT: ${ORANGE_TIMEOUT:-5000}
+      
+      # Vite Frontend Config
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001}
+    
+    # Volumes for data persistence and Docker socket access
+    volumes:
+      # Docker socket access (for monitoring)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      
+      # Logs persistence
+      - ./logs:/app/logs
+      
+      # Optional: Data persistence
+      - dashboard-data:/app/data
+    
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=dashboard"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - mediahub
+
+  # ============================================
+  # Optional: Watchtower for auto-updates
+  # ============================================
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: mediahub-watchtower
+    restart: unless-stopped
+    
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    
+    environment:
+      # Check for updates every 6 hours
+      WATCHTOWER_POLL_INTERVAL: 21600
+      WATCHTOWER_CLEANUP: "true"
+      # Only auto-update containers with label
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_INCLUDE_STOPPED: "false"
+    
+    networks:
+      - mediahub
+    
+    # Only start if ENABLE_WATCHTOWER is true
+    profiles:
+      - monitoring
+
+  # ============================================
+  # Optional: Portainer for container management
+  # ============================================
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: mediahub-portainer
+    restart: unless-stopped
+    
+    ports:
+      - "${PORTAINER_PORT:-9000}:9000"
+    
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    
+    environment:
+      TZ: ${TZ:-UTC}
+    
+    networks:
+      - mediahub
+    
+    # Only start if ENABLE_PORTAINER is true
+    profiles:
+      - monitoring
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  mediahub:
+    driver: bridge
+
+# ============================================
+# Volumes for persistence
+# ============================================
+volumes:
+  dashboard-data:
+    driver: local
+  
+  portainer-data:
+    driver: local
