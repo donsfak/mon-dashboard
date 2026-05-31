@@ -13,7 +13,8 @@ const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 const cache = {
   dockerContainers: { data: null, timestamp: 0, ttl: 5000 },
   tailscaleDevices: { data: null, timestamp: 0, ttl: 5000 },
-  orangePing: { data: null, timestamp: 0, ttl: 10000 }
+  orangePing: { data: null, timestamp: 0, ttl: 10000 },
+  jellyfinMovies: { data: null, timestamp: 0, ttl: 30000 }
 };
 
 const getCacheData = (key) => {
@@ -243,6 +244,61 @@ app.get('/api/tailscale/devices', async (req, res) => {
   } catch (error) {
     console.error('Erreur globale Tailscale:', error.message);
     res.json(mockDevices);
+  }
+});
+
+// ============= JELLYFIN API =============
+// Endpoint to get recent Jellyfin movies
+app.get('/api/jellyfin/movies', async (req, res) => {
+  try {
+    // Check cache first
+    const cached = getCacheData('jellyfinMovies');
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const jellyfinUrl = process.env.JELLYFIN_URL;
+    const apiKey = process.env.JELLYFIN_API_KEY;
+    const userId = process.env.JELLYFIN_USER_ID;
+
+    if (!jellyfinUrl || !apiKey) {
+      console.warn('⚠️ Jellyfin configuration missing (URL or API key)');
+      return res.status(400).json({ error: 'Jellyfin not configured' });
+    }
+
+    // Fetch recent movies using Jellyfin API
+    const response = await fetch(
+      `${jellyfinUrl}/Users/${userId}/Items?api_key=${apiKey}&IncludeItemTypes=Movie&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=10&Fields=Overview,MediaStreams,RunTimeTicks,UserData`,
+      { method: 'GET' }
+    );
+
+    if (!response.ok) {
+      console.error(`❌ Jellyfin API Error ${response.status}:`, await response.text());
+      return res.status(response.status).json({ error: 'Failed to fetch from Jellyfin' });
+    }
+
+    const data = await response.json();
+    
+    // Transform Jellyfin items to our format
+    const movies = data.Items.map(item => ({
+      id: item.Id,
+      title: item.Name,
+      year: item.ProductionYear,
+      poster: item.ImageTags?.Primary 
+        ? `${jellyfinUrl}/Items/${item.Id}/Images/Primary?api_key=${apiKey}`
+        : null,
+      playCount: item.UserData?.PlayCount || 0,
+      lastPlayed: item.UserData?.LastPlayedDate || null,
+      runtime: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 10000000 / 60) : 0,
+      duration: item.RunTimeTicks ? item.RunTimeTicks / 10000000 : 0,
+      overview: item.Overview
+    }));
+
+    setCacheData('jellyfinMovies', movies);
+    res.json(movies);
+  } catch (error) {
+    console.error('Jellyfin API Error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
