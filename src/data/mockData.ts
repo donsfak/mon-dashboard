@@ -90,9 +90,12 @@ export const jellyfinMovies = [
     id: "1",
     title: "Spider-Noir",
     year: 2023,
+    episodeTitle: "Passez dans mon bureau",
+    episodeCode: "S01:E01",
     poster: "https://images.justwatch.com/poster/307216425/s332",
     playCount: 5,
     lastPlayed: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    playbackPosition: 3120,
     duration: 8100,
     runtime: 135
   },
@@ -100,9 +103,12 @@ export const jellyfinMovies = [
     id: "2",
     title: "The Cruel Queen and the Fiancé",
     year: 2024,
+    episodeTitle: "Pour un monde meilleur",
+    episodeCode: "S04:E01",
     poster: "https://images.justwatch.com/poster/312156802/s332",
     playCount: 2,
     lastPlayed: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    playbackPosition: 2460,
     duration: 4320,
     runtime: 72
   },
@@ -113,6 +119,7 @@ export const jellyfinMovies = [
     poster: "https://images.justwatch.com/poster/308723141/s332",
     playCount: 1,
     lastPlayed: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    playbackPosition: 960,
     duration: 1440,
     runtime: 24
   },
@@ -123,6 +130,7 @@ export const jellyfinMovies = [
     poster: "https://images.justwatch.com/poster/316348929/s332",
     playCount: 3,
     lastPlayed: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    playbackPosition: 3840,
     duration: 6480,
     runtime: 108
   },
@@ -133,6 +141,7 @@ export const jellyfinMovies = [
     poster: "https://images.justwatch.com/poster/317423091/s332",
     playCount: 4,
     lastPlayed: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    playbackPosition: 4140,
     duration: 7200,
     runtime: 120
   }

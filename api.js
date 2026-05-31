@@ -14,7 +14,8 @@ const cache = {
   dockerContainers: { data: null, timestamp: 0, ttl: 5000 },
   tailscaleDevices: { data: null, timestamp: 0, ttl: 5000 },
   orangePing: { data: null, timestamp: 0, ttl: 10000 },
-  jellyfinMovies: { data: null, timestamp: 0, ttl: 30000 }
+  jellyfinMovies: { data: null, timestamp: 0, ttl: 30000 },
+  serviceUpdates: { data: null, timestamp: 0, ttl: 300000 }
 };
 
 const getCacheData = (key) => {
@@ -276,18 +277,27 @@ app.get('/api/jellyfin/movies', async (req, res) => {
     };
 
     const normalizeItem = (item) => {
+      const playbackPositionTicks = item.UserData?.PlaybackPositionTicks || 0;
       const isEpisode = item.Type === 'Episode';
       const title = isEpisode && item.SeriesName ? item.SeriesName : item.Name;
       const imageItemId = item.SeriesId || item.ParentId || item.Id;
+      const seasonNumber = item.ParentIndexNumber ?? item.SeasonNumber ?? null;
+      const episodeNumber = item.IndexNumber ?? null;
+      const episodeCode = (seasonNumber && episodeNumber)
+        ? `S${String(seasonNumber).padStart(2, '0')}:E${String(episodeNumber).padStart(2, '0')}`
+        : null;
       return {
         id: item.SeriesId || item.Id,
         title,
+        episodeTitle: isEpisode ? item.Name : null,
+        episodeCode,
         year: item.ProductionYear,
         poster: item.ImageTags?.Primary
           ? `${jellyfinUrl}/Items/${imageItemId}/Images/Primary?api_key=${apiKey}`
           : null,
         playCount: item.UserData?.PlayCount || 0,
         lastPlayed: item.UserData?.LastPlayedDate || null,
+        playbackPosition: playbackPositionTicks ? Math.round(playbackPositionTicks / 10000000) : 0,
         runtime: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 10000000 / 60) : 0,
         duration: item.RunTimeTicks ? item.RunTimeTicks / 10000000 : 0,
         overview: item.Overview
@@ -298,7 +308,7 @@ app.get('/api/jellyfin/movies', async (req, res) => {
 
     try {
       const resumeData = await fetchJson(
-        `${jellyfinUrl}/Users/${userId}/Items/Resume?api_key=${apiKey}&Limit=20&Fields=Overview,RunTimeTicks,UserData,SeriesId,SeriesName,ProductionYear,ImageTags`
+        `${jellyfinUrl}/Users/${userId}/Items/Resume?api_key=${apiKey}&Limit=20&Fields=Overview,RunTimeTicks,UserData,SeriesId,SeriesName,ProductionYear,ImageTags,IndexNumber,ParentIndexNumber,SeasonNumber`
       );
       items = Array.isArray(resumeData.Items) ? resumeData.Items : [];
     } catch (error) {
@@ -339,6 +349,63 @@ app.get('/api/jellyfin/movies', async (req, res) => {
     res.json(movies);
   } catch (error) {
     console.error('Jellyfin API Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= SERVICES UPDATE STATUS =============
+// Endpoint to get update status for Sonarr/Radarr/Prowlarr
+app.get('/api/services/updates', async (req, res) => {
+  try {
+    const cached = getCacheData('serviceUpdates');
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const services = [
+      { key: 'sonarr', url: process.env.SONARR_URL, apiKey: process.env.SONARR_API_KEY },
+      { key: 'radarr', url: process.env.RADARR_URL, apiKey: process.env.RADARR_API_KEY },
+      { key: 'prowlarr', url: process.env.PROWLARR_URL, apiKey: process.env.PROWLARR_API_KEY }
+    ];
+
+    const fetchUpdateStatus = async ({ url, apiKey }) => {
+      if (!url || !apiKey) {
+        return null;
+      }
+
+      const endpoints = ['api/v3/update', 'api/v1/update'];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(`${url.replace(/\/$/, '')}/${endpoint}`, {
+            headers: { 'X-Api-Key': apiKey }
+          });
+          if (!response.ok) {
+            continue;
+          }
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            return data.some((item) => item && item.available === true) || data.length > 0;
+          }
+          return false;
+        } catch (error) {
+          // Try next endpoint
+        }
+      }
+
+      return null;
+    };
+
+    const results = {};
+    for (const service of services) {
+      results[service.key] = {
+        updateAvailable: await fetchUpdateStatus(service)
+      };
+    }
+
+    setCacheData('serviceUpdates', results);
+    res.json(results);
+  } catch (error) {
+    console.error('Service update check error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

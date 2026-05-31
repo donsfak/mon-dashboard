@@ -48,7 +48,7 @@ const useTailscaleDevices = () => {
   useEffect(() => {
     const fetchDevices = async () => {
       try {
-        const res = await fetch('http://localhost:3001/api/tailscale/devices');
+        const res = await fetch(`${API_BASE}/tailscale/devices`);
         if (res.ok) {
           const data = await res.json();
           setDevices(data);
@@ -75,7 +75,7 @@ const useOrangePing = () => {
   const measurePing = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/api/network/orange-ping');
+      const res = await fetch(`${API_BASE}/network/orange-ping`);
       if (res.ok) {
         const data = await res.json();
         setPingData(data);
@@ -104,7 +104,7 @@ const useInternetSpeed = () => {
   const measureSpeed = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/api/network/orange-speed-test');
+      const res = await fetch(`${API_BASE}/network/orange-speed-test`);
       if (res.ok) {
         const data = await res.json();
         
@@ -172,7 +172,40 @@ const useJellyfinMovies = (initialMovies: any[] = []) => {
   return { movies, loading };
 };
 
-export { useInternetSpeed, useJellyfinMovies };
+const useServiceUpdates = (initialServices: any[] = []) => {
+  const [services, setServices] = useState<any[]>(initialServices);
+
+  useEffect(() => {
+    const fetchUpdates = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/services/updates`);
+        if (res.ok) {
+          const data = await res.json();
+          setServices((prev) => prev.map((service) => {
+            const key = service.title?.toLowerCase();
+            if (!key || !data[key]) {
+              return service;
+            }
+            if (typeof data[key].updateAvailable !== 'boolean') {
+              return service;
+            }
+            return { ...service, updateAvailable: data[key].updateAvailable };
+          }));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch service updates:', err);
+      }
+    };
+
+    fetchUpdates();
+    const interval = setInterval(fetchUpdates, 300000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return services;
+};
+
+export { useInternetSpeed, useJellyfinMovies, useServiceUpdates };
 
 export const ClockWidget = () => {
   const [time, setTime] = useState(new Date());
@@ -396,6 +429,16 @@ export const TailscaleList = ({ devices: initialDevices }: { devices: any[] }) =
 export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => {
   const { movies: realMovies, loading } = useJellyfinMovies(initialMovies);
   const moviesToShow = realMovies.length > 0 ? realMovies : initialMovies;
+  const formatTime = (totalSeconds: number) => {
+    const safeSeconds = Math.max(0, Math.floor(totalSeconds || 0));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  };
 
   return (
     <div className={`${GlassStyle} flex flex-col gap-3`}>
@@ -413,6 +456,11 @@ export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => 
           {moviesToShow.map((movie, idx) => {
             const lastPlayedDate = new Date(movie.lastPlayed);
             const daysAgo = Math.floor((Date.now() - lastPlayedDate.getTime()) / (1000 * 60 * 60 * 24));
+            const playbackPosition = movie.playbackPosition || 0;
+            const totalDuration = movie.duration || 0;
+            const progressPercent = totalDuration > 0
+              ? Math.min(100, Math.round((playbackPosition / totalDuration) * 100))
+              : 0;
             
             return (
               <motion.div 
@@ -439,7 +487,9 @@ export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => 
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="flex-1">
                       <h4 className="text-sm font-medium text-slate-200 truncate">{movie.title}</h4>
-                      <p className="text-xs text-slate-500">{movie.year}</p>
+                      <p className="text-xs text-slate-500">
+                        {movie.episodeCode ? `${movie.episodeCode} • ` : ''}{movie.episodeTitle || movie.year}
+                      </p>
                     </div>
                     {movie.playCount > 0 && (
                       <div className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/20 rounded text-xs text-cyan-300 flex-shrink-0">
@@ -462,6 +512,20 @@ export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => 
                       </>
                     )}
                   </div>
+                  {progressPercent > 0 && (
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                        <span>Reprise</span>
+                        <span>{formatTime(playbackPosition)} / {formatTime(totalDuration)}</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-800/60 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-400/80"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             );

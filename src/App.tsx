@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ShieldCheck, Activity, Network, Server, Package } from 'lucide-react';
 import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies } from './data/mockData';
-import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed } from './components/DashboardUI';
+import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates } from './components/DashboardUI';
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
@@ -16,6 +16,7 @@ const fadeItem: Variants = {
 
 export default function App() {
   const { speed, loading, measureSpeed } = useInternetSpeed();
+  const servicesWithUpdates = useServiceUpdates(services);
 
   return (
     <div className="min-h-screen bg-background text-slate-200 font-sans p-4 md:p-6 selection:bg-cyan-500/30">
@@ -77,7 +78,7 @@ export default function App() {
                 Mon centre multimédia
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                {services.map((svc) => (
+                {servicesWithUpdates.map((svc) => (
                   <ServiceCard key={svc.title} service={svc} />
                 ))}
               </div>
