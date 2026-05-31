@@ -13,50 +13,129 @@ export const services = [
     icon: MonitorPlay,
     status: "active",
     href: `http://${systemData.ip}:5055`,
-    stats: [{ label: "En attente", value: "3" }, { label: "Traitées", value: "142" }]
+    stats: [
+      { label: "En attente", value: "3", color: "text-amber-400" }, 
+      { label: "Traitées", value: "142", color: "text-emerald-400" }
+    ],
+    health: "healthy",
+    updateAvailable: false
   },
   {
     title: "Radarr",
     icon: Film,
     status: "active",
     href: `http://${systemData.ip}:7878`,
-    stats: [{ label: "Films", value: "847" }, { label: "Manquants", value: "12" }]
+    stats: [
+      { label: "Films", value: "847", color: "text-cyan-400" }, 
+      { label: "Manquants", value: "12", color: "text-red-400" }
+    ],
+    health: "healthy",
+    updateAvailable: false
   },
   {
     title: "Sonarr",
     icon: Tv,
     status: "active",
     href: `http://${systemData.ip}:8989`,
-    stats: [{ label: "Séries", value: "45" }, { label: "À venir", value: "8" }]
+    stats: [
+      { label: "Séries", value: "45", color: "text-cyan-400" }, 
+      { label: "À venir", value: "8", color: "text-amber-400" }
+    ],
+    health: "healthy",
+    updateAvailable: true
   },
   {
     title: "Prowlarr",
     icon: Search,
     status: "active",
     href: `http://${systemData.ip}:9696`,
-    stats: [{ label: "Indexeurs", value: "6 actifs" }, { label: "Santé", value: "100%" }]
+    stats: [
+      { label: "Indexeurs", value: "6 actifs", color: "text-emerald-400" }, 
+      { label: "Santé", value: "100%", color: "text-emerald-400" }
+    ],
+    health: "healthy",
+    updateAvailable: false
   },
   {
     title: "RDT Client",
     icon: Download,
     status: "active",
     href: `http://${systemData.ip}:6500`,
-    stats: [{ label: "Actifs", value: "2 DL" }, { label: "Stockage", value: "1.4 TB" }]
+    stats: [
+      { label: "Actifs", value: "2 DL", color: "text-emerald-400" }, 
+      { label: "Stockage", value: "1.4 TB", color: "text-cyan-400" }
+    ],
+    health: "healthy",
+    updateAvailable: false
   }
 ];
+
 export const dockerContainers = [
   // Écosystème Multimédia
-  { name: "jellyseerr", state: "running", port: "5055" },
-  { name: "radarr", state: "running", port: "7878" },
-  { name: "sonarr", state: "running", port: "8989" },
-  { name: "prowlarr", state: "running", port: "9696" },
-  { name: "rdtclient", state: "running", port: "6500" },
+  { name: "jellyseerr", state: "running", port: "5055", health: "healthy", uptime: "14d 5h", cpu: "2.1%", memory: "342MB" },
+  { name: "radarr", state: "running", port: "7878", health: "healthy", uptime: "14d 3h", cpu: "0.8%", memory: "156MB" },
+  { name: "sonarr", state: "running", port: "8989", health: "healthy", uptime: "12d 18h", cpu: "1.2%", memory: "298MB" },
+  { name: "prowlarr", state: "running", port: "9696", health: "healthy", uptime: "14d 2h", cpu: "0.3%", memory: "89MB" },
+  { name: "rdtclient", state: "running", port: "6500", health: "healthy", uptime: "8d 4h", cpu: "0.5%", memory: "127MB" },
   
   // Nouveaux Services d'Infrastructure
-  { name: "jellyfin", state: "running", port: "8096" },
-  { name: "filebrowser", state: "running", port: "8080" },
-  { name: "adguard-service", state: "running", port: "53" },
-  { name: "portainer", state: "running", port: "9000" }
+  { name: "jellyfin", state: "running", port: "8096", health: "healthy", uptime: "21d 1h", cpu: "3.2%", memory: "512MB" },
+  { name: "filebrowser", state: "running", port: "8080", health: "healthy", uptime: "14d 5h", cpu: "0.1%", memory: "45MB" },
+  { name: "adguard-service", state: "running", port: "53", health: "healthy", uptime: "30d 0h", cpu: "0.6%", memory: "78MB" },
+  { name: "portainer", state: "running", port: "9000", health: "healthy", uptime: "14d 5h", cpu: "0.9%", memory: "198MB" }
+];
+
+export const jellyfinMovies = [
+  {
+    id: "1",
+    title: "Spider-Noir",
+    year: 2023,
+    poster: "https://images.justwatch.com/poster/307216425/s332",
+    playCount: 5,
+    lastPlayed: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    duration: 8100,
+    runtime: 135
+  },
+  {
+    id: "2",
+    title: "The Cruel Queen and the Fiancé",
+    year: 2024,
+    poster: "https://images.justwatch.com/poster/312156802/s332",
+    playCount: 2,
+    lastPlayed: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    duration: 4320,
+    runtime: 72
+  },
+  {
+    id: "3",
+    title: "The Banished Court Magician",
+    year: 2024,
+    poster: "https://images.justwatch.com/poster/308723141/s332",
+    playCount: 1,
+    lastPlayed: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    duration: 1440,
+    runtime: 24
+  },
+  {
+    id: "4",
+    title: "Assassination of Assassin",
+    year: 2024,
+    poster: "https://images.justwatch.com/poster/316348929/s332",
+    playCount: 3,
+    lastPlayed: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    duration: 6480,
+    runtime: 108
+  },
+  {
+    id: "5",
+    title: "My Status as an Assassin",
+    year: 2024,
+    poster: "https://images.justwatch.com/poster/317423091/s332",
+    playCount: 4,
+    lastPlayed: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    duration: 7200,
+    runtime: 120
+  }
 ];
 
 export const tailscaleDevices = [

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { CloudRain, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal } from 'lucide-react';
+import { CloudRain, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal, AlertCircle, Play, Clock, Film as FilmIcon } from 'lucide-react';
 const API_BASE = `http://${window.location.hostname}:3001/api`;
 const CardHover = "hover:border-cyan-500/40 hover:shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all duration-500";
 const GlassStyle = "bg-glass border border-glassBorder backdrop-blur-xl rounded-2xl p-6";
@@ -141,7 +141,34 @@ const useInternetSpeed = () => {
   return { speed, loading, measureSpeed };
 };
 
-export { useInternetSpeed };
+const useJellyfinMovies = () => {
+  const [movies, setMovies] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchMovies = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/jellyfin/movies`);
+        if (res.ok) {
+          const data = await res.json();
+          setMovies(data.slice(0, 5)); // Get top 5 recent movies
+        }
+      } catch (err) {
+        console.warn('Failed to fetch real Jellyfin data, using mock:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMovies();
+    const interval = setInterval(fetchMovies, 30000); // Poll every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  return { movies, loading };
+};
+
+export { useInternetSpeed, useJellyfinMovies };
 
 export const ClockWidget = () => {
   const [time, setTime] = useState(new Date());
@@ -276,20 +303,40 @@ export const ServiceCard = ({ service }: any) => (
     href={service.href} 
     target="_blank"
     whileHover={{ scale: 1.02, y: -2 }} 
-    className={`${GlassStyle} ${CardHover} group block cursor-pointer`}
+    className={`${GlassStyle} ${CardHover} group block cursor-pointer relative`}
   >
     <div className="flex justify-between items-start mb-5">
       <div className="p-3 bg-white/5 rounded-xl group-hover:bg-cyan-500/20 transition-colors duration-300">
         <service.icon className="w-6 h-6 text-cyan-400" />
       </div>
-      <div className={`w-2.5 h-2.5 rounded-full ${service.status === 'active' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse-slow' : 'bg-red-500'}`} />
+      <div className="flex flex-col items-end gap-2">
+        <div className="flex items-center gap-2">
+          {service.health === 'healthy' && (
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse-slow" />
+          )}
+          {service.health === 'warning' && (
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+          )}
+          <span className="text-xs font-medium text-slate-400 capitalize">{service.health}</span>
+        </div>
+        {service.updateAvailable && (
+          <motion.div 
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="px-2 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full flex items-center gap-1"
+          >
+            <AlertCircle className="w-3 h-3 text-amber-400" />
+            <span className="text-xs text-amber-300 font-medium">Update</span>
+          </motion.div>
+        )}
+      </div>
     </div>
     <h3 className="text-lg font-medium text-white mb-3">{service.title}</h3>
     <div className="space-y-1.5">
       {service.stats.map((stat: any, idx: number) => (
         <div key={idx} className="flex justify-between text-sm">
           <span className="text-slate-400">{stat.label}</span>
-          <span className="text-slate-200 font-medium">{stat.value}</span>
+          <span className={`font-medium ${stat.color || 'text-slate-200'}`}>{stat.value}</span>
         </div>
       ))}
     </div>
@@ -342,14 +389,108 @@ export const TailscaleList = ({ devices: initialDevices }: { devices: any[] }) =
   );
 };
 
+export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => {
+  const { movies: realMovies, loading } = useJellyfinMovies();
+  const moviesToShow = realMovies.length > 0 ? realMovies : initialMovies;
+
+  return (
+    <div className={`${GlassStyle} flex flex-col gap-3`}>
+      <div className="flex items-center gap-2 mb-2">
+        <FilmIcon className="w-5 h-5 text-cyan-400" />
+        <h3 className="text-lg font-semibold text-white">Lecteur Jellyfin</h3>
+      </div>
+      {loading && realMovies.length === 0 && (
+        <p className="text-xs text-slate-500 text-center py-4">Chargement des films...</p>
+      )}
+      {moviesToShow.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-4">Aucun film disponible</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto pr-2">
+          {moviesToShow.map((movie, idx) => {
+            const lastPlayedDate = new Date(movie.lastPlayed);
+            const daysAgo = Math.floor((Date.now() - lastPlayedDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            return (
+              <motion.div 
+                key={idx}
+                whileHover={{ x: 4 }}
+                className="flex gap-3 p-3 hover:bg-white/5 rounded-lg transition-colors border border-transparent hover:border-white/10 group"
+              >
+                {movie.poster && (
+                  <div className="relative w-12 h-16 flex-shrink-0 rounded-md overflow-hidden bg-slate-800">
+                    <img 
+                      src={movie.poster} 
+                      alt={movie.title}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 96"%3E%3Crect fill="%231e293b" width="64" height="96"/%3E%3Ctext x="32" y="48" text-anchor="middle" dy=".3em" fill="%2364748b" font-size="12" font-family="sans-serif"%3E?%3C/text%3E%3C/svg%3E';
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Play className="w-4 h-4 text-white fill-white" />
+                    </div>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-slate-200 truncate">{movie.title}</h4>
+                      <p className="text-xs text-slate-500">{movie.year}</p>
+                    </div>
+                    {movie.playCount > 0 && (
+                      <div className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/20 rounded text-xs text-cyan-300 flex-shrink-0">
+                        <Play className="w-3 h-3" />
+                        {movie.playCount}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    {movie.runtime && (
+                      <>
+                        <Clock className="w-3 h-3" />
+                        <span>{Math.floor(movie.runtime / 60)}min</span>
+                      </>
+                    )}
+                    {daysAgo >= 0 && (
+                      <>
+                        <span>•</span>
+                        <span>Il y a {daysAgo === 0 ? 'aujourd\'hui' : daysAgo === 1 ? '1j' : `${daysAgo}j`}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const DockerList = ({ containers: initialContainers }: { containers: any[] }) => {
   const { containers: realContainers, loading } = useDockerContainers();
   const containersToShow = realContainers.length > 0 ? realContainers : initialContainers;
 
+  const getStateColor = (state: string) => {
+    switch (state) {
+      case 'running':
+        return 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
+      case 'paused':
+        return 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]';
+      case 'exited':
+        return 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]';
+      case 'unhealthy':
+        return 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]';
+      default:
+        return 'bg-slate-500';
+    }
+  };
+
   return (
     <div className={`${GlassStyle} flex flex-col gap-2`}>
       {loading && realContainers.length === 0 && (
-        <p className="text-xs text-slate-500 text-center py-2">Loading...</p>
+        <p className="text-xs text-slate-500 text-center py-2">Chargement...</p>
       )}
       {containersToShow.length === 0 ? (
         <p className="text-sm text-slate-400 text-center py-4">Aucun conteneur</p>
@@ -358,16 +499,34 @@ export const DockerList = ({ containers: initialContainers }: { containers: any[
           <motion.div 
             key={idx} 
             whileHover={{ x: 4 }}
-            className="flex justify-between items-center p-3 hover:bg-white/5 rounded-xl transition-colors border border-transparent hover:border-white/10 group"
+            className="flex flex-col p-3 hover:bg-white/5 rounded-xl transition-colors border border-transparent hover:border-white/10 group"
           >
-            <div className="flex items-center gap-3 flex-1">
-              <Package className="w-5 h-5 text-cyan-400/70 group-hover:text-cyan-400 transition-colors" />
-              <span className="text-sm font-medium text-slate-200">{container.name}</span>
+            <div className="flex justify-between items-center mb-2">
+              <div className="flex items-center gap-3 flex-1">
+                <Package className="w-5 h-5 text-cyan-400/70 group-hover:text-cyan-400 transition-colors" />
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-slate-200">{container.name}</span>
+                  {container.uptime && (
+                    <span className="text-xs text-slate-500">Uptime: {container.uptime}</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col items-end text-xs">
+                  {container.health && (
+                    <span className="text-slate-400">{container.health}</span>
+                  )}
+                  <span className={`font-mono text-slate-500`}>:{container.port}</span>
+                </div>
+                <div className={`w-2.5 h-2.5 rounded-full ${getStateColor(container.state)}`} />
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-slate-500">:{container.port}</span>
-              <div className={`w-2 h-2 rounded-full ${container.state === 'running' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-red-500/80'}`} />
-            </div>
+            {(container.cpu || container.memory) && (
+              <div className="flex gap-4 text-xs text-slate-500 ml-8">
+                {container.cpu && <span>CPU: {container.cpu}</span>}
+                {container.memory && <span>MEM: {container.memory}</span>}
+              </div>
+            )}
           </motion.div>
         ))
       )}

@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ShieldCheck, Activity, Network, Server, Package } from 'lucide-react';
-import { systemData, services, tailscaleDevices, dockerContainers } from './data/mockData';
-import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, useInternetSpeed } from './components/DashboardUI';
+import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies } from './data/mockData';
+import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed } from './components/DashboardUI';
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
@@ -21,18 +21,19 @@ export default function App() {
     <div className="min-h-screen bg-background text-slate-200 font-sans p-4 md:p-6 selection:bg-cyan-500/30">
       <div className="flex gap-6 max-w-7xl mx-auto">
         {/* LEFT SIDEBAR */}
-        <div className="w-full md:w-64 flex-shrink-0 space-y-4">
+        <div className="w-full md:w-80 flex-shrink-0 space-y-4">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
-            className="space-y-4 sticky top-6"
+            className="space-y-4 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pr-2"
           >
             <ClockWidget />
             <CalendarWidget />
             <WeatherWidget />
             <InternetSpeedWidget speed={speed} loading={loading} onMeasure={measureSpeed} />
             <OrangePingWidget />
+            <JellyfinMovies movies={jellyfinMovies} />
           </motion.div>
         </div>
 
