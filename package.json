@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "api": "node --loader ts-node/esm api.js",
-    "dev": "concurrently \"vite\" \"node api.js\"",
+    "dev": "concurrently \"vite\" \"API_PORT=3002 node api.js\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

@@ -248,7 +248,7 @@ app.get('/api/tailscale/devices', async (req, res) => {
 });
 
 // ============= JELLYFIN API =============
-// Endpoint to get recent Jellyfin movies
+// Endpoint to get Continue Watching items from Jellyfin
 app.get('/api/jellyfin/movies', async (req, res) => {
   try {
     // Check cache first
@@ -261,38 +261,79 @@ app.get('/api/jellyfin/movies', async (req, res) => {
     const apiKey = process.env.JELLYFIN_API_KEY;
     const userId = process.env.JELLYFIN_USER_ID;
 
-    if (!jellyfinUrl || !apiKey) {
-      console.warn('⚠️ Jellyfin configuration missing (URL or API key)');
+    if (!jellyfinUrl || !apiKey || !userId) {
+      console.warn('⚠️ Jellyfin configuration missing');
       return res.status(400).json({ error: 'Jellyfin not configured' });
     }
 
-    // Fetch Continue Watching (Resume) items using Jellyfin API
-    const response = await fetch(
-      `${jellyfinUrl}/Users/${userId}/Items/Resume?api_key=${apiKey}&Limit=10&Fields=Overview,MediaStreams,RunTimeTicks,UserData`,
-      { method: 'GET' }
-    );
+    const fetchJson = async (url) => {
+      const response = await fetch(url, { method: 'GET' });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Jellyfin API Error ${response.status}: ${errorText}`);
+      }
+      return response.json();
+    };
 
-    if (!response.ok) {
-      console.error(`❌ Jellyfin API Error ${response.status}:`, await response.text());
-      return res.status(response.status).json({ error: 'Failed to fetch from Jellyfin' });
+    const normalizeItem = (item) => {
+      const isEpisode = item.Type === 'Episode';
+      const title = isEpisode && item.SeriesName ? item.SeriesName : item.Name;
+      const imageItemId = item.SeriesId || item.ParentId || item.Id;
+      return {
+        id: item.SeriesId || item.Id,
+        title,
+        year: item.ProductionYear,
+        poster: item.ImageTags?.Primary
+          ? `${jellyfinUrl}/Items/${imageItemId}/Images/Primary?api_key=${apiKey}`
+          : null,
+        playCount: item.UserData?.PlayCount || 0,
+        lastPlayed: item.UserData?.LastPlayedDate || null,
+        runtime: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 10000000 / 60) : 0,
+        duration: item.RunTimeTicks ? item.RunTimeTicks / 10000000 : 0,
+        overview: item.Overview
+      };
+    };
+
+    let items = [];
+
+    try {
+      const resumeData = await fetchJson(
+        `${jellyfinUrl}/Users/${userId}/Items/Resume?api_key=${apiKey}&Limit=20&Fields=Overview,RunTimeTicks,UserData,SeriesId,SeriesName,ProductionYear,ImageTags`
+      );
+      items = Array.isArray(resumeData.Items) ? resumeData.Items : [];
+    } catch (error) {
+      console.warn('⚠️ Jellyfin Resume endpoint failed, falling back:', error.message);
     }
 
-    const data = await response.json();
-    
-    // Transform Jellyfin items to our format
-    const movies = data.Items.map(item => ({
-      id: item.Id,
-      title: item.Name,
-      year: item.ProductionYear,
-      poster: item.ImageTags?.Primary 
-        ? `${jellyfinUrl}/Items/${item.Id}/Images/Primary?api_key=${apiKey}`
-        : null,
-      playCount: item.UserData?.PlayCount || 0,
-      lastPlayed: item.UserData?.LastPlayedDate || null,
-      runtime: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 10000000 / 60) : 0,
-      duration: item.RunTimeTicks ? item.RunTimeTicks / 10000000 : 0,
-      overview: item.Overview
-    }));
+    if (items.length === 0) {
+      const libraries = await fetchJson(
+        `${jellyfinUrl}/Users/${userId}/Items?api_key=${apiKey}&IncludeItemTypes=CollectionFolder`
+      );
+      const libraryIds = (libraries.Items || [])
+        .filter((lib) => lib.Type === 'CollectionFolder')
+        .map((lib) => lib.Id);
+
+      const inProgressResponses = await Promise.all(
+        libraryIds.map((libraryId) => fetchJson(
+          `${jellyfinUrl}/Users/${userId}/Items?api_key=${apiKey}&ParentId=${libraryId}&Filters=IsInProgress&SortBy=DatePlayed&SortOrder=Descending&Limit=20&IncludeItemTypes=Episode,Movie`
+        ))
+      );
+
+      items = inProgressResponses.flatMap((response) => response.Items || []);
+    }
+
+    const seen = new Set();
+    const movies = items
+      .filter((item) => item.Type !== 'CollectionFolder')
+      .map(normalizeItem)
+      .filter((item) => {
+        if (!item.title || seen.has(item.id)) {
+          return false;
+        }
+        seen.add(item.id);
+        return true;
+      })
+      .slice(0, 10);
 
     setCacheData('jellyfinMovies', movies);
     res.json(movies);
