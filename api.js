@@ -266,9 +266,9 @@ app.get('/api/jellyfin/movies', async (req, res) => {
       return res.status(400).json({ error: 'Jellyfin not configured' });
     }
 
-    // Fetch recent movies using Jellyfin API
+    // Fetch Continue Watching (Resume) items using Jellyfin API
     const response = await fetch(
-      `${jellyfinUrl}/Users/${userId}/Items?api_key=${apiKey}&IncludeItemTypes=Movie&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=10&Fields=Overview,MediaStreams,RunTimeTicks,UserData`,
+      `${jellyfinUrl}/Users/${userId}/Items/Resume?api_key=${apiKey}&Limit=10&Fields=Overview,MediaStreams,RunTimeTicks,UserData`,
       { method: 'GET' }
     );
 
