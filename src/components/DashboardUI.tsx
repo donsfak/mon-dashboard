@@ -141,30 +141,12 @@ const useInternetSpeed = () => {
   return { speed, loading, measureSpeed };
 };
 
-const useJellyfinMovies = () => {
-  const [movies, setMovies] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+const useJellyfinMovies = (initialMovies: any[] = []) => {
+  const [movies] = useState<any[]>(initialMovies);
+  const [loading] = useState(false);
 
-  useEffect(() => {
-    const fetchMovies = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/jellyfin/movies`);
-        if (res.ok) {
-          const data = await res.json();
-          setMovies(data.slice(0, 5)); // Get top 5 recent movies
-        }
-      } catch (err) {
-        console.warn('Failed to fetch real Jellyfin data, using mock:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMovies();
-    const interval = setInterval(fetchMovies, 30000); // Poll every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
-
+  // Note: To fetch real data from Jellyfin API, add endpoint to api.js
+  // For now, using mock data passed via initialMovies prop
   return { movies, loading };
 };
 
@@ -390,7 +372,7 @@ export const TailscaleList = ({ devices: initialDevices }: { devices: any[] }) =
 };
 
 export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => {
-  const { movies: realMovies, loading } = useJellyfinMovies();
+  const { movies: realMovies } = useJellyfinMovies(initialMovies);
   const moviesToShow = realMovies.length > 0 ? realMovies : initialMovies;
 
   return (
@@ -399,9 +381,6 @@ export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => 
         <FilmIcon className="w-5 h-5 text-cyan-400" />
         <h3 className="text-lg font-semibold text-white">Lecteur Jellyfin</h3>
       </div>
-      {loading && realMovies.length === 0 && (
-        <p className="text-xs text-slate-500 text-center py-4">Chargement des films...</p>
-      )}
       {moviesToShow.length === 0 ? (
         <p className="text-sm text-slate-400 text-center py-4">Aucun film disponible</p>
       ) : (
