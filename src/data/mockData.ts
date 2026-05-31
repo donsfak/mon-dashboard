@@ -147,6 +147,51 @@ export const jellyfinMovies = [
   }
 ];
 
+export const jellyseerRequests = [
+  {
+    id: 'req-1',
+    title: 'Lanterns',
+    type: 'tv',
+    status: 'APPROVED',
+    poster: 'https://image.tmdb.org/t/p/w342/6Oh5ZT2XpOmpH4VJpHew9NTkqCR.jpg'
+  },
+  {
+    id: 'req-2',
+    title: 'Reborn Rich',
+    type: 'tv',
+    status: 'APPROVED',
+    poster: 'https://image.tmdb.org/t/p/w342/mKIrbZp3nG5XV5ocW4ndQgt7xBe.jpg'
+  },
+  {
+    id: 'req-3',
+    title: 'Swapped',
+    type: 'movie',
+    status: 'AVAILABLE',
+    poster: 'https://image.tmdb.org/t/p/w342/fbywVPR3YpVbM8e0mH6XqzJg7RG.jpg'
+  }
+];
+
+export const jellyseerRecentlyAdded = [
+  {
+    id: 'add-1',
+    title: 'Spider-Noir',
+    type: 'tv',
+    poster: 'https://image.tmdb.org/t/p/w342/6Oh5ZT2XpOmpH4VJpHew9NTkqCR.jpg'
+  },
+  {
+    id: 'add-2',
+    title: 'Swapped',
+    type: 'movie',
+    poster: 'https://image.tmdb.org/t/p/w342/fbywVPR3YpVbM8e0mH6XqzJg7RG.jpg'
+  },
+  {
+    id: 'add-3',
+    title: 'Harry Potter',
+    type: 'movie',
+    poster: 'https://image.tmdb.org/t/p/w342/8lMLlE9QwU8oM4kKZrmkSLvZ2dP.jpg'
+  }
+];
+
 export const tailscaleDevices = [
   { 
     name: "sfak55-ideapad (Serveur)", 

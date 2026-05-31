@@ -15,7 +15,9 @@ const cache = {
   tailscaleDevices: { data: null, timestamp: 0, ttl: 5000 },
   orangePing: { data: null, timestamp: 0, ttl: 10000 },
   jellyfinMovies: { data: null, timestamp: 0, ttl: 30000 },
-  serviceUpdates: { data: null, timestamp: 0, ttl: 300000 }
+  serviceUpdates: { data: null, timestamp: 0, ttl: 300000 },
+  jellyseerRequests: { data: null, timestamp: 0, ttl: 30000 },
+  jellyseerRecentlyAdded: { data: null, timestamp: 0, ttl: 30000 }
 };
 
 const getCacheData = (key) => {
@@ -349,6 +351,88 @@ app.get('/api/jellyfin/movies', async (req, res) => {
     res.json(movies);
   } catch (error) {
     console.error('Jellyfin API Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= JELLYSEERR API =============
+const jellyseerImageBase = 'https://image.tmdb.org/t/p/w342';
+
+const getJellyseerConfig = () => ({
+  url: process.env.JELLYSEERR_URL,
+  apiKey: process.env.JELLYSEERR_API_KEY
+});
+
+const jellyseerRequest = async (path) => {
+  const { url, apiKey } = getJellyseerConfig();
+  if (!url || !apiKey) {
+    return null;
+  }
+  const response = await fetch(`${url.replace(/\/$/, '')}${path}`, {
+    headers: { 'X-Api-Key': apiKey }
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Jellyseerr API Error ${response.status}: ${errorText}`);
+  }
+  return response.json();
+};
+
+const buildPoster = (posterPath) => posterPath ? `${jellyseerImageBase}${posterPath}` : null;
+
+app.get('/api/jellyseer/requests', async (req, res) => {
+  try {
+    const cached = getCacheData('jellyseerRequests');
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const data = await jellyseerRequest('/api/v1/request?take=10&skip=0&sort=added');
+    if (!data) {
+      return res.status(400).json({ error: 'Jellyseerr not configured' });
+    }
+
+    const requests = (data.results || []).map((item) => ({
+      id: item.id,
+      title: item.media?.title || item.media?.name || item.title || item.name,
+      year: item.media?.releaseDate || item.media?.firstAirDate || null,
+      type: item.type || item.media?.mediaType || item.media?.type || null,
+      status: item.status || item.media?.status || null,
+      poster: buildPoster(item.media?.posterPath || item.posterPath)
+    }));
+
+    setCacheData('jellyseerRequests', requests);
+    res.json(requests);
+  } catch (error) {
+    console.error('Jellyseerr requests error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/jellyseer/recently-added', async (req, res) => {
+  try {
+    const cached = getCacheData('jellyseerRecentlyAdded');
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const data = await jellyseerRequest('/api/v1/media?take=12&skip=0&sort=added');
+    if (!data) {
+      return res.status(400).json({ error: 'Jellyseerr not configured' });
+    }
+
+    const items = (data.results || []).map((item) => ({
+      id: item.id,
+      title: item.title || item.name,
+      year: item.releaseDate || item.firstAirDate || null,
+      type: item.mediaType || item.type || null,
+      poster: buildPoster(item.posterPath)
+    }));
+
+    setCacheData('jellyseerRecentlyAdded', items);
+    res.json(items);
+  } catch (error) {
+    console.error('Jellyseerr recently added error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { CloudRain, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal, AlertCircle, Play, Clock, Film as FilmIcon } from 'lucide-react';
+import { CloudRain, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal, AlertCircle, Film as FilmIcon } from 'lucide-react';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:3001/api`;
 const CardHover = "hover:border-cyan-500/40 hover:shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all duration-500";
 const GlassStyle = "bg-glass border border-glassBorder backdrop-blur-xl rounded-2xl p-6";
@@ -172,6 +172,36 @@ const useJellyfinMovies = (initialMovies: any[] = []) => {
   return { movies, loading };
 };
 
+const useJellyseerData = (initialRequests: any[] = [], initialAdded: any[] = []) => {
+  const [requests, setRequests] = useState<any[]>(initialRequests);
+  const [recentlyAdded, setRecentlyAdded] = useState<any[]>(initialAdded);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [requestsRes, addedRes] = await Promise.all([
+          fetch(`${API_BASE}/jellyseer/requests`),
+          fetch(`${API_BASE}/jellyseer/recently-added`)
+        ]);
+        if (requestsRes.ok) {
+          setRequests(await requestsRes.json());
+        }
+        if (addedRes.ok) {
+          setRecentlyAdded(await addedRes.json());
+        }
+      } catch (err) {
+        console.warn('Failed to fetch Jellyseer data:', err);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return { requests, recentlyAdded };
+};
+
 const useServiceUpdates = (initialServices: any[] = []) => {
   const [services, setServices] = useState<any[]>(initialServices);
 
@@ -205,7 +235,7 @@ const useServiceUpdates = (initialServices: any[] = []) => {
   return services;
 };
 
-export { useInternetSpeed, useJellyfinMovies, useServiceUpdates };
+export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData };
 
 export const ClockWidget = () => {
   const [time, setTime] = useState(new Date());
@@ -441,18 +471,21 @@ export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => 
   };
 
   return (
-    <div className={`${GlassStyle} flex flex-col gap-3`}>
-      <div className="flex items-center gap-2 mb-2">
-        <FilmIcon className="w-5 h-5 text-cyan-400" />
-        <h3 className="text-lg font-semibold text-white">Lecteur Jellyfin</h3>
+    <div className={`${GlassStyle} flex flex-col gap-4`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FilmIcon className="w-5 h-5 text-cyan-400" />
+          <h3 className="text-lg font-semibold text-white">Jellyfin</h3>
+        </div>
+        <span className="text-xs uppercase tracking-wider text-slate-500">Continue watching</span>
       </div>
       {loading && realMovies.length === 0 && (
-        <p className="text-xs text-slate-500 text-center py-4">Chargement des films...</p>
+        <p className="text-xs text-slate-500 text-center py-4">Chargement...</p>
       )}
       {moviesToShow.length === 0 ? (
-        <p className="text-sm text-slate-400 text-center py-4">Aucun film disponible</p>
+        <p className="text-sm text-slate-400 text-center py-4">Aucun contenu disponible</p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto pr-2">
+        <div className="flex gap-4 overflow-x-auto pb-2 pr-1">
           {moviesToShow.map((movie, idx) => {
             const lastPlayedDate = new Date(movie.lastPlayed);
             const daysAgo = Math.floor((Date.now() - lastPlayedDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -461,69 +494,55 @@ export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => 
             const progressPercent = totalDuration > 0
               ? Math.min(100, Math.round((playbackPosition / totalDuration) * 100))
               : 0;
-            
+
             return (
-              <motion.div 
+              <motion.div
                 key={idx}
-                whileHover={{ x: 4 }}
-                className="flex gap-3 p-3 hover:bg-white/5 rounded-lg transition-colors border border-transparent hover:border-white/10 group"
+                whileHover={{ y: -4 }}
+                className="min-w-[190px] max-w-[190px]"
               >
-                {movie.poster && (
-                  <div className="relative w-12 h-16 flex-shrink-0 rounded-md overflow-hidden bg-slate-800">
-                    <img 
-                      src={movie.poster} 
+                <div className="relative h-28 rounded-2xl overflow-hidden bg-slate-800 border border-white/5 shadow-lg">
+                  {movie.poster ? (
+                    <img
+                      src={movie.poster}
                       alt={movie.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                      className="absolute inset-0 w-full h-full object-cover"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 96"%3E%3Crect fill="%231e293b" width="64" height="96"/%3E%3Ctext x="32" y="48" text-anchor="middle" dy=".3em" fill="%2364748b" font-size="12" font-family="sans-serif"%3E?%3C/text%3E%3C/svg%3E';
                       }}
                     />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Play className="w-4 h-4 text-white fill-white" />
+                  ) : (
+                    <div className="absolute inset-0 bg-slate-800" />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
+                  {movie.playCount > 0 && (
+                    <div className="absolute top-2 right-2 px-2 py-1 rounded-full bg-slate-900/70 text-[10px] text-slate-200 border border-white/10">
+                      ▶ {movie.playCount}
                     </div>
+                  )}
+                  <div className="absolute bottom-2 left-2 right-2">
+                    <h4 className="text-sm font-semibold text-white truncate">{movie.title}</h4>
+                    <p className="text-[11px] text-slate-300 truncate">
+                      {movie.episodeCode ? `${movie.episodeCode} • ` : ''}{movie.episodeTitle || movie.year || ''}
+                    </p>
                   </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-slate-200 truncate">{movie.title}</h4>
-                      <p className="text-xs text-slate-500">
-                        {movie.episodeCode ? `${movie.episodeCode} • ` : ''}{movie.episodeTitle || movie.year}
-                      </p>
-                    </div>
-                    {movie.playCount > 0 && (
-                      <div className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/20 rounded text-xs text-cyan-300 flex-shrink-0">
-                        <Play className="w-3 h-3" />
-                        {movie.playCount}
-                      </div>
+                </div>
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>Reprise</span>
+                    {progressPercent > 0 && (
+                      <span>{formatTime(playbackPosition)} / {formatTime(totalDuration)}</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    {movie.runtime && (
-                      <>
-                        <Clock className="w-3 h-3" />
-                        <span>{Math.floor(movie.runtime / 60)}min</span>
-                      </>
-                    )}
-                    {daysAgo >= 0 && (
-                      <>
-                        <span>•</span>
-                        <span>Il y a {daysAgo === 0 ? 'aujourd\'hui' : daysAgo === 1 ? '1j' : `${daysAgo}j`}</span>
-                      </>
-                    )}
+                  <div className="h-1.5 w-full bg-slate-800/60 rounded-full overflow-hidden mt-1">
+                    <div
+                      className="h-full bg-emerald-400/80"
+                      style={{ width: `${progressPercent}%` }}
+                    />
                   </div>
-                  {progressPercent > 0 && (
-                    <div className="mt-2">
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                        <span>Reprise</span>
-                        <span>{formatTime(playbackPosition)} / {formatTime(totalDuration)}</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-slate-800/60 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-400/80"
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
+                  {daysAgo >= 0 && (
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      Il y a {daysAgo === 0 ? 'aujourd\'hui' : daysAgo === 1 ? '1j' : `${daysAgo}j`}
                     </div>
                   )}
                 </div>
@@ -535,6 +554,87 @@ export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => 
     </div>
   );
 };
+
+const getJellyseerStatus = (status: any) => {
+  if (status === 3 || status === 'AVAILABLE') return { label: 'Available', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
+  if (status === 2 || status === 'APPROVED') return { label: 'Approved', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' };
+  if (status === 4 || status === 'PARTIALLY_AVAILABLE') return { label: 'Partial', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
+  if (status === 5 || status === 'PENDING') return { label: 'Pending', color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+  return { label: 'Requested', color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+};
+
+const getMediaTypeBadge = (type: string | null) => {
+  if (!type) return null;
+  const normalized = type.toLowerCase();
+  if (normalized === 'tv') return { label: 'SERIES', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' };
+  if (normalized === 'movie') return { label: 'MOVIE', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
+  return { label: normalized.toUpperCase(), color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+};
+
+export const JellyseerSection = ({ requests, recentlyAdded }: { requests: any[]; recentlyAdded: any[] }) => (
+  <div className="space-y-6">
+    <div className="flex items-center justify-between">
+      <h2 className="text-xl font-semibold text-white">Seerr</h2>
+      <span className="text-xs uppercase tracking-wider text-slate-500">Recent requests</span>
+    </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-400">Recent requests</p>
+        <span className="text-xs text-slate-500">Showing {requests.length} items</span>
+      </div>
+      <div className="flex gap-4 overflow-x-auto pb-2">
+        {requests.map((item) => {
+          const status = getJellyseerStatus(item.status);
+          const typeBadge = getMediaTypeBadge(item.type);
+          return (
+            <div key={item.id} className="min-w-[180px] max-w-[180px]">
+              <div className="relative h-28 rounded-2xl overflow-hidden bg-slate-800 border border-white/5">
+                {item.poster && (
+                  <img src={item.poster} alt={item.title} className="absolute inset-0 w-full h-full object-cover" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/10 to-transparent" />
+                {typeBadge && (
+                  <span className={`absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full border ${typeBadge.color}`}>{typeBadge.label}</span>
+                )}
+                <span className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full border ${status.color}`}>{status.label}</span>
+                <div className="absolute bottom-2 left-2 right-2">
+                  <p className="text-sm font-semibold text-white truncate">{item.title}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-400">Recently added</p>
+        <span className="text-xs text-slate-500">Showing {recentlyAdded.length} items</span>
+      </div>
+      <div className="flex gap-4 overflow-x-auto pb-2">
+        {recentlyAdded.map((item) => {
+          const typeBadge = getMediaTypeBadge(item.type);
+          return (
+            <div key={item.id} className="min-w-[180px] max-w-[180px]">
+              <div className="relative h-28 rounded-2xl overflow-hidden bg-slate-800 border border-white/5">
+                {item.poster && (
+                  <img src={item.poster} alt={item.title} className="absolute inset-0 w-full h-full object-cover" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/10 to-transparent" />
+                {typeBadge && (
+                  <span className={`absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full border ${typeBadge.color}`}>{typeBadge.label}</span>
+                )}
+                <div className="absolute bottom-2 left-2 right-2">
+                  <p className="text-sm font-semibold text-white truncate">{item.title}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+);
 
 export const DockerList = ({ containers: initialContainers }: { containers: any[] }) => {
   const { containers: realContainers, loading } = useDockerContainers();

@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ShieldCheck, Activity, Network, Server, Package } from 'lucide-react';
-import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies } from './data/mockData';
-import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates } from './components/DashboardUI';
+import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies, jellyseerRequests, jellyseerRecentlyAdded } from './data/mockData';
+import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection } from './components/DashboardUI';
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
@@ -17,6 +17,7 @@ const fadeItem: Variants = {
 export default function App() {
   const { speed, loading, measureSpeed } = useInternetSpeed();
   const servicesWithUpdates = useServiceUpdates(services);
+  const jellyseerData = useJellyseerData(jellyseerRequests, jellyseerRecentlyAdded);
 
   return (
     <div className="min-h-screen bg-background text-slate-200 font-sans p-4 md:p-6 selection:bg-cyan-500/30">
@@ -82,6 +83,10 @@ export default function App() {
                   <ServiceCard key={svc.title} service={svc} />
                 ))}
               </div>
+            </motion.section>
+
+            <motion.section variants={fadeItem}>
+              <JellyseerSection requests={jellyseerData.requests} recentlyAdded={jellyseerData.recentlyAdded} />
             </motion.section>
 
             {/* SYSTEM STATUS & NETWORK */}
