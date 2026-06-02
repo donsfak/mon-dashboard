@@ -380,13 +380,13 @@ const jellyseerRequest = async (path) => {
 
 const buildPoster = (posterPath) => posterPath ? `${jellyseerImageBase}${posterPath}` : null;
 
-const fetchJellyseerTmdb = async (mediaType, tmdbId) => {
+const fetchJellyseerDetails = async (mediaType, tmdbId) => {
   if (!tmdbId || !mediaType) {
     return null;
   }
   const endpoint = mediaType === 'tv'
-    ? `/api/v1/tmdb/tv/${tmdbId}`
-    : `/api/v1/tmdb/movie/${tmdbId}`;
+    ? `/api/v1/tv/${tmdbId}`
+    : `/api/v1/movie/${tmdbId}`;
   try {
     const data = await jellyseerRequest(endpoint);
     if (!data) {
@@ -422,7 +422,7 @@ app.get('/api/jellyseer/requests', async (req, res) => {
       let posterPath = item.media?.posterPath || item.posterPath || null;
 
       if (!title || !posterPath) {
-        const tmdb = await fetchJellyseerTmdb(mediaType, item.media?.tmdbId);
+        const tmdb = await fetchJellyseerDetails(mediaType, item.media?.tmdbId);
         if (tmdb) {
           title = title || tmdb.title;
           year = year || tmdb.year;
@@ -467,7 +467,7 @@ app.get('/api/jellyseer/recently-added', async (req, res) => {
       let posterPath = item.posterPath || null;
 
       if (!title || !posterPath) {
-        const tmdb = await fetchJellyseerTmdb(mediaType, item.tmdbId);
+        const tmdb = await fetchJellyseerDetails(mediaType, item.tmdbId);
         if (tmdb) {
           title = title || tmdb.title;
           year = year || tmdb.year;
