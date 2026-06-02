@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { CloudRain, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal, AlertCircle, Film as FilmIcon } from 'lucide-react';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:3001/api`;
+const fallbackApiBase = `http://${window.location.hostname}:3001/api`;
+const envApiBase = import.meta.env.VITE_API_BASE_URL;
+const API_BASE = envApiBase && (!envApiBase.includes('localhost') || window.location.hostname === 'localhost')
+  ? envApiBase
+  : fallbackApiBase;
 const CardHover = "hover:border-cyan-500/40 hover:shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all duration-500";
 const GlassStyle = "bg-glass border border-glassBorder backdrop-blur-xl rounded-2xl p-6";
 
