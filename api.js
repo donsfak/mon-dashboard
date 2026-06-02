@@ -380,6 +380,29 @@ const jellyseerRequest = async (path) => {
 
 const buildPoster = (posterPath) => posterPath ? `${jellyseerImageBase}${posterPath}` : null;
 
+const fetchJellyseerTmdb = async (mediaType, tmdbId) => {
+  if (!tmdbId || !mediaType) {
+    return null;
+  }
+  const endpoint = mediaType === 'tv'
+    ? `/api/v1/tmdb/tv/${tmdbId}`
+    : `/api/v1/tmdb/movie/${tmdbId}`;
+  try {
+    const data = await jellyseerRequest(endpoint);
+    if (!data) {
+      return null;
+    }
+    return {
+      title: data.name || data.title || null,
+      posterPath: data.posterPath || data.poster_path || null,
+      year: data.firstAirDate || data.releaseDate || data.first_air_date || data.release_date || null
+    };
+  } catch (error) {
+    console.warn('⚠️ Jellyseerr TMDB lookup failed:', error.message);
+    return null;
+  }
+};
+
 app.get('/api/jellyseer/requests', async (req, res) => {
   try {
     const cached = getCacheData('jellyseerRequests');
@@ -392,13 +415,29 @@ app.get('/api/jellyseer/requests', async (req, res) => {
       return res.status(400).json({ error: 'Jellyseerr not configured' });
     }
 
-    const requests = (data.results || []).map((item) => ({
-      id: item.id,
-      title: item.media?.title || item.media?.name || item.title || item.name,
-      year: item.media?.releaseDate || item.media?.firstAirDate || null,
-      type: item.type || item.media?.mediaType || item.media?.type || null,
-      status: item.status || item.media?.status || null,
-      poster: buildPoster(item.media?.posterPath || item.posterPath)
+    const requests = await Promise.all((data.results || []).map(async (item) => {
+      const mediaType = (item.type || item.media?.mediaType || item.media?.type || '').toLowerCase();
+      let title = item.media?.title || item.media?.name || item.title || item.name || null;
+      let year = item.media?.releaseDate || item.media?.firstAirDate || null;
+      let posterPath = item.media?.posterPath || item.posterPath || null;
+
+      if (!title || !posterPath) {
+        const tmdb = await fetchJellyseerTmdb(mediaType, item.media?.tmdbId);
+        if (tmdb) {
+          title = title || tmdb.title;
+          year = year || tmdb.year;
+          posterPath = posterPath || tmdb.posterPath;
+        }
+      }
+
+      return {
+        id: item.id,
+        title,
+        year,
+        type: mediaType || null,
+        status: item.status || item.media?.status || null,
+        poster: buildPoster(posterPath)
+      };
     }));
 
     setCacheData('jellyseerRequests', requests);
@@ -421,12 +460,28 @@ app.get('/api/jellyseer/recently-added', async (req, res) => {
       return res.status(400).json({ error: 'Jellyseerr not configured' });
     }
 
-    const items = (data.results || []).map((item) => ({
-      id: item.id,
-      title: item.title || item.name,
-      year: item.releaseDate || item.firstAirDate || null,
-      type: item.mediaType || item.type || null,
-      poster: buildPoster(item.posterPath)
+    const items = await Promise.all((data.results || []).map(async (item) => {
+      const mediaType = (item.mediaType || item.type || '').toLowerCase();
+      let title = item.title || item.name || null;
+      let year = item.releaseDate || item.firstAirDate || null;
+      let posterPath = item.posterPath || null;
+
+      if (!title || !posterPath) {
+        const tmdb = await fetchJellyseerTmdb(mediaType, item.tmdbId);
+        if (tmdb) {
+          title = title || tmdb.title;
+          year = year || tmdb.year;
+          posterPath = posterPath || tmdb.posterPath;
+        }
+      }
+
+      return {
+        id: item.id,
+        title,
+        year,
+        type: mediaType || null,
+        poster: buildPoster(posterPath)
+      };
     }));
 
     setCacheData('jellyseerRecentlyAdded', items);
