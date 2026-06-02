@@ -460,7 +460,10 @@ app.get('/api/jellyseer/requests', async (req, res) => {
       if (includePending) {
         return true;
       }
-      return item.status === 3 || item.status === 'AVAILABLE';
+
+      const requestAvailable = item.status === 3 || item.status === 'AVAILABLE';
+      const mediaAvailable = item.media?.status === 3 || !!item.media?.mediaAddedAt;
+      return requestAvailable || mediaAvailable;
     });
 
     setCacheData('jellyseerRequests', availableRequests);
