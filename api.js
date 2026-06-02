@@ -415,6 +415,8 @@ app.get('/api/jellyseer/requests', async (req, res) => {
       return res.status(400).json({ error: 'Jellyseerr not configured' });
     }
 
+    const jellyfinUserId = process.env.JELLYFIN_USER_ID;
+    const jellyseerUserId = process.env.JELLYSEERR_USER_ID;
     const requests = await Promise.all((data.results || []).map(async (item) => {
       const mediaType = (item.type || item.media?.mediaType || item.media?.type || '').toLowerCase();
       let title = item.media?.title || item.media?.name || item.title || item.name || null;
@@ -436,12 +438,33 @@ app.get('/api/jellyseer/requests', async (req, res) => {
         year,
         type: mediaType || null,
         status: item.status || item.media?.status || null,
-        poster: buildPoster(posterPath)
+        poster: buildPoster(posterPath),
+        requestedBy: item.requestedBy?.displayName || item.requestedBy?.username || null,
+        requestedByJellyfinId: item.requestedBy?.jellyfinUserId || null,
+        requestedById: item.requestedBy?.id || null
       };
     }));
 
-    setCacheData('jellyseerRequests', requests);
-    res.json(requests);
+    const filteredRequests = requests.filter((item) => {
+      if (jellyseerUserId) {
+        return String(item.requestedById) === String(jellyseerUserId);
+      }
+      if (jellyfinUserId) {
+        return item.requestedByJellyfinId === jellyfinUserId;
+      }
+      return true;
+    });
+
+    const includePending = String(process.env.JELLYSEERR_INCLUDE_PENDING || '').toLowerCase() === 'true';
+    const availableRequests = filteredRequests.filter((item) => {
+      if (includePending) {
+        return true;
+      }
+      return item.status === 3 || item.status === 'AVAILABLE';
+    });
+
+    setCacheData('jellyseerRequests', availableRequests);
+    res.json(availableRequests);
   } catch (error) {
     console.error('Jellyseerr requests error:', error.message);
     res.status(500).json({ error: error.message });

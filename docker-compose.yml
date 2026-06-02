@@ -47,6 +47,7 @@ services:
       # Jellyseerr (set in .env)
       JELLYSEERR_URL: ${JELLYSEERR_URL:-}
       JELLYSEERR_API_KEY: ${JELLYSEERR_API_KEY:-}
+      JELLYSEERR_USER_ID: ${JELLYSEERR_USER_ID:-}
     
     # Volumes for data persistence and Docker socket access
     volumes:
