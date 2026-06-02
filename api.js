@@ -455,19 +455,8 @@ app.get('/api/jellyseer/requests', async (req, res) => {
       return true;
     });
 
-    const includePending = String(process.env.JELLYSEERR_INCLUDE_PENDING || '').toLowerCase() === 'true';
-    const availableRequests = filteredRequests.filter((item) => {
-      if (includePending) {
-        return true;
-      }
-
-      const requestAvailable = item.status === 3 || item.status === 'AVAILABLE';
-      const mediaAvailable = item.media?.status === 3 || !!item.media?.mediaAddedAt;
-      return requestAvailable || mediaAvailable;
-    });
-
-    setCacheData('jellyseerRequests', availableRequests);
-    res.json(availableRequests);
+    setCacheData('jellyseerRequests', filteredRequests);
+    res.json(filteredRequests);
   } catch (error) {
     console.error('Jellyseerr requests error:', error.message);
     res.status(500).json({ error: error.message });
@@ -510,8 +499,12 @@ app.get('/api/jellyseer/recently-added', async (req, res) => {
       };
     }));
 
-    setCacheData('jellyseerRecentlyAdded', items);
-    res.json(items);
+    const availableItems = items.filter((item) => {
+      return item.type === 'tv' || item.type === 'movie';
+    });
+
+    setCacheData('jellyseerRecentlyAdded', availableItems);
+    res.json(availableItems);
   } catch (error) {
     console.error('Jellyseerr recently added error:', error.message);
     res.status(500).json({ error: error.message });
