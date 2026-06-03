@@ -49,6 +49,9 @@ services:
       JELLYSEERR_API_KEY: ${JELLYSEERR_API_KEY:-}
       JELLYSEERR_USER_ID: ${JELLYSEERR_USER_ID:-}
       JELLYSEERR_INCLUDE_PENDING: ${JELLYSEERR_INCLUDE_PENDING:-false}
+
+      # Gmail Integration (set in .env)
+      GMAIL_ACCOUNTS: ${GMAIL_ACCOUNTS:-}
     
     # Volumes for data persistence and Docker socket access
     volumes:
