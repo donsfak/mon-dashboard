@@ -239,7 +239,7 @@ const useServiceUpdates = (initialServices: any[] = []) => {
   return services;
 };
 
-export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData };
+export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData, useDockerContainers };
 
 export const ClockWidget = () => {
   const [time, setTime] = useState(new Date());

@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ShieldCheck, Activity, Network, Server, Package } from 'lucide-react';
 import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies, jellyseerRequests, jellyseerRecentlyAdded } from './data/mockData';
-import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection } from './components/DashboardUI';
+import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection, useDockerContainers } from './components/DashboardUI';
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
@@ -18,6 +18,9 @@ export default function App() {
   const { speed, loading, measureSpeed } = useInternetSpeed();
   const servicesWithUpdates = useServiceUpdates(services);
   const jellyseerData = useJellyseerData(jellyseerRequests, jellyseerRecentlyAdded);
+  const { containers } = useDockerContainers();
+  const activeContainers = containers.filter((c: any) => c.state === 'running').length;
+  const displayActiveCount = activeContainers > 0 ? activeContainers : services.length;
 
   return (
     <div className="min-h-screen bg-background text-slate-200 font-sans p-4 md:p-6 selection:bg-cyan-500/30">
@@ -58,7 +61,7 @@ export default function App() {
               <div className="flex flex-wrap gap-3">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
                   <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-xs font-medium text-emerald-400">5 services actifs</span>
+                  <span className="text-xs font-medium text-emerald-400">{displayActiveCount} services actifs</span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/20 rounded-full">
                   <ShieldCheck className="w-4 h-4 text-cyan-400" />
