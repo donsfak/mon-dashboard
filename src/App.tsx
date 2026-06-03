@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ShieldCheck, Activity, Network, Server, Package } from 'lucide-react';
 import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies, jellyseerRequests, jellyseerRecentlyAdded } from './data/mockData';
-import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection, useDockerContainers } from './components/DashboardUI';
+import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection, useDockerContainers, GmailWidget } from './components/DashboardUI';
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
@@ -37,6 +37,7 @@ export default function App() {
             <CalendarWidget />
             <WeatherWidget />
             <InternetSpeedWidget speed={speed} loading={loading} onMeasure={measureSpeed} />
+            <GmailWidget />
             <OrangePingWidget />
             <JellyfinMovies movies={jellyfinMovies} />
           </motion.div>

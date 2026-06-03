@@ -206,6 +206,34 @@ const useJellyseerData = (initialRequests: any[] = [], initialAdded: any[] = [])
   return { requests, recentlyAdded };
 };
 
+const useGmailData = () => {
+  const [inboxes, setInboxes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchGmail = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/gmail/inboxes`);
+        if (res.ok) {
+          const data = await res.json();
+          setInboxes(data);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch Gmail data:', err);
+        setInboxes([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchGmail();
+    const interval = setInterval(fetchGmail, 120000); // Poll every 2 minutes
+    return () => clearInterval(interval);
+  }, []);
+
+  return { inboxes, loading };
+};
+
 const useServiceUpdates = (initialServices: any[] = []) => {
   const [services, setServices] = useState<any[]>(initialServices);
 
@@ -239,7 +267,7 @@ const useServiceUpdates = (initialServices: any[] = []) => {
   return services;
 };
 
-export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData, useDockerContainers };
+export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData, useDockerContainers, useGmailData };
 
 export const ClockWidget = () => {
   const [time, setTime] = useState(new Date());
@@ -341,6 +369,48 @@ export const InternetSpeedWidget = ({ speed, loading, onMeasure }: any) => (
     )}
   </motion.button>
 );
+
+export const GmailWidget = () => {
+  const { inboxes, loading } = useGmailData();
+
+  return (
+    <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">INBOXES</span>
+      </div>
+      {loading ? (
+        <div className="space-y-2">
+          <div className="h-8 bg-slate-700/50 rounded animate-pulse" />
+          <div className="h-8 bg-slate-700/50 rounded animate-pulse" />
+        </div>
+      ) : inboxes.length > 0 ? (
+        <div className="space-y-2">
+          {inboxes.map((inbox, idx) => (
+            <div
+              key={idx}
+              className="flex items-center justify-between p-2 rounded hover:bg-white/5 transition-colors"
+            >
+              <div className="flex items-center gap-2 flex-1">
+                <span className="text-sm text-slate-300 truncate">{inbox.name || inbox.email || `Gmail ${idx + 1}`}</span>
+              </div>
+              <span
+                className={`text-xs font-medium px-2 py-1 rounded-full ${
+                  inbox.count > 0
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                }`}
+              >
+                {inbox.count}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500 text-center py-3">No Gmail accounts configured</p>
+      )}
+    </motion.div>
+  );
+};
 
 export const ResourceBar = ({ label, icon: Icon, percentage, color }: any) => (
   <div className="mb-4 last:mb-0">

@@ -655,6 +655,48 @@ app.get('/api/network/orange-speed-test', async (req, res) => {
   }
 });
 
+// ============= GMAIL API =============
+// Endpoint to get Gmail inboxes and unread counts
+app.get('/api/gmail/inboxes', async (req, res) => {
+  try {
+    // For now, return mock data until Gmail OAuth is configured
+    // In production, this would integrate with Google API
+    const gmailAccounts = [];
+    
+    // Parse environment variable for Gmail accounts
+    // Format: GMAIL_ACCOUNTS=email1@gmail.com:label1,email2@gmail.com:label2
+    if (process.env.GMAIL_ACCOUNTS) {
+      const accounts = process.env.GMAIL_ACCOUNTS.split(',');
+      accounts.forEach((account) => {
+        const [email, label] = account.trim().split(':');
+        if (email) {
+          gmailAccounts.push({
+            email: email.trim(),
+            label: label?.trim() || 'Inbox',
+            count: 0, // Would fetch real count from Gmail API
+            configured: false // Would be true when Gmail API is set up
+          });
+        }
+      });
+    }
+
+    // For demo: show placeholder if no real accounts configured
+    if (gmailAccounts.length === 0) {
+      gmailAccounts.push({
+        email: 'your-email@gmail.com',
+        label: 'Inbox',
+        count: 0,
+        configured: false
+      });
+    }
+
+    res.json(gmailAccounts);
+  } catch (error) {
+    console.error('Gmail API Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ 
