@@ -1,6 +1,6 @@
 import { useState, useEffect, memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { CloudRain, Cloud, CloudSnow, CloudLightning, Sun, CloudSun, Droplets, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal, AlertCircle, Film as FilmIcon } from 'lucide-react';
+import { CloudRain, Cloud, CloudSnow, CloudLightning, Sun, CloudSun, Droplets, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Zap, Wifi, Signal, AlertCircle, Film as FilmIcon } from 'lucide-react';
 const fallbackApiBase = `http://${window.location.hostname}:3001/api`;
 const envApiBase = import.meta.env.VITE_API_BASE_URL;
 const API_BASE = envApiBase && (!envApiBase.includes('localhost') || window.location.hostname === 'localhost')
@@ -961,67 +961,59 @@ export const JellyseerSection = memo(({ requests, recentlyAdded }: { requests: a
   </div>
 ));
 
+const dockerStateDot: Record<string, string> = {
+  running:   'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]',
+  paused:    'bg-amber-400  shadow-[0_0_6px_rgba(251,191,36,0.8)]',
+  exited:    'bg-red-500    shadow-[0_0_6px_rgba(239,68,68,0.8)]',
+  unhealthy: 'bg-red-500    shadow-[0_0_6px_rgba(239,68,68,0.8)]',
+};
+
+const dockerStateBadge: Record<string, string> = {
+  running:   'text-emerald-400',
+  paused:    'text-amber-400',
+  exited:    'text-red-400',
+  unhealthy: 'text-red-400',
+};
+
 export const DockerList = ({ containers: initialContainers }: { containers: any[] }) => {
   const { containers: realContainers, loading } = useDockerContainers();
   const containersToShow = realContainers.length > 0 ? realContainers : initialContainers;
 
-  const getStateColor = (state: string) => {
-    switch (state) {
-      case 'running':
-        return 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
-      case 'paused':
-        return 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]';
-      case 'exited':
-        return 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]';
-      case 'unhealthy':
-        return 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]';
-      default:
-        return 'bg-slate-500';
-    }
-  };
-
   return (
-    <div className={`${GlassStyle} flex flex-col gap-2`}>
+    <div className={`${GlassStyle}`}>
       {loading && realContainers.length === 0 && (
         <p className="text-xs text-slate-500 text-center py-2">Chargement...</p>
       )}
       {containersToShow.length === 0 ? (
         <p className="text-sm text-slate-400 text-center py-4">Aucun conteneur</p>
       ) : (
-        containersToShow.map((container, idx) => (
-          <motion.div 
-            key={idx} 
-            whileHover={{ x: 4 }}
-            className="flex flex-col p-3 hover:bg-white/5 rounded-xl transition-colors border border-transparent hover:border-white/10 group"
-          >
-            <div className="flex justify-between items-center mb-2">
-              <div className="flex items-center gap-3 flex-1">
-                <Package className="w-5 h-5 text-cyan-400/70 group-hover:text-cyan-400 transition-colors" />
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-slate-200">{container.name}</span>
-                  {container.uptime && (
-                    <span className="text-xs text-slate-500">Uptime: {container.uptime}</span>
+        <div className="grid grid-cols-2 gap-2">
+          {containersToShow.map((container, idx) => (
+            <motion.div
+              key={idx}
+              whileHover={{ scale: 1.02 }}
+              className="flex items-center gap-2.5 p-3 rounded-xl bg-white/3 hover:bg-white/6 border border-transparent hover:border-white/10 transition-all duration-200 group min-w-0"
+            >
+              {/* State dot */}
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dockerStateDot[container.state] ?? 'bg-slate-500'}`} />
+
+              {/* Name + port */}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-slate-200 truncate leading-tight">
+                  {container.name}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {container.port && (
+                    <span className="text-[10px] font-mono text-slate-500">:{container.port}</span>
                   )}
+                  <span className={`text-[10px] capitalize ${dockerStateBadge[container.state] ?? 'text-slate-500'}`}>
+                    {container.state}
+                  </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex flex-col items-end text-xs">
-                  {container.health && (
-                    <span className="text-slate-400">{container.health}</span>
-                  )}
-                  <span className={`font-mono text-slate-500`}>:{container.port}</span>
-                </div>
-                <div className={`w-2.5 h-2.5 rounded-full ${getStateColor(container.state)}`} />
-              </div>
-            </div>
-            {(container.cpu || container.memory) && (
-              <div className="flex gap-4 text-xs text-slate-500 ml-8">
-                {container.cpu && <span>CPU: {container.cpu}</span>}
-                {container.memory && <span>MEM: {container.memory}</span>}
-              </div>
-            )}
-          </motion.div>
-        ))
+            </motion.div>
+          ))}
+        </div>
       )}
     </div>
   );
