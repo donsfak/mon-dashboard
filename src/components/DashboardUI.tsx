@@ -345,9 +345,9 @@ export const useSystemStatus = () => {
   return status;
 };
 
-export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData, useDockerContainers, useGmailData };
+export { useInternetSpeed, useServiceUpdates, useJellyseerData, useDockerContainers, useGmailData };
 
-export const ClockWidget = () => {
+export const ClockWidget = memo(() => {
   const [time, setTime] = useState(new Date());
   useEffect(() => { const timer = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(timer); }, []);
 
@@ -361,7 +361,7 @@ export const ClockWidget = () => {
       </p>
     </motion.div>
   );
-};
+});
 
 // Map OpenWeatherMap weather IDs → { Icon, color, bg }
 // https://openweathermap.org/weather-conditions
@@ -376,7 +376,7 @@ const getWeatherInfo = (id: number) => {
   return                             { Icon: Cloud,          color: 'text-slate-300',  bg: 'bg-slate-500/10'  };
 };
 
-export const WeatherWidget = () => {
+export const WeatherWidget = memo(() => {
   const { weather, loading } = useWeather();
   const info = weather ? getWeatherInfo(weather.weatherId ?? 800) : null;
 
@@ -422,9 +422,9 @@ export const WeatherWidget = () => {
       )}
     </motion.div>
   );
-};
+});
 
-export const CalendarWidget = () => {
+export const CalendarWidget = memo(() => {
   const today = new Date();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).getDay();
@@ -458,7 +458,7 @@ export const CalendarWidget = () => {
       </div>
     </motion.div>
   );
-};
+});
 
 const timeAgo = (date: Date | null) => {
   if (!date) return null;
@@ -469,7 +469,7 @@ const timeAgo = (date: Date | null) => {
   return `il y a ${hrs}h`;
 };
 
-export const InternetSpeedWidget = ({ speed, loading, onMeasure, testedAt }: any) => (
+export const InternetSpeedWidget = memo(({ speed, loading, onMeasure, testedAt }: any) => (
   <motion.button
     onClick={onMeasure}
     whileHover={{ scale: 1.02 }}
@@ -521,9 +521,9 @@ export const InternetSpeedWidget = ({ speed, loading, onMeasure, testedAt }: any
       </div>
     )}
   </motion.button>
-);
+));
 
-export const GmailWidget = () => {
+export const GmailWidget = memo(() => {
   const { inboxes, loading } = useGmailData();
 
   return (
@@ -563,27 +563,7 @@ export const GmailWidget = () => {
       )}
     </motion.div>
   );
-};
-
-// SVG circular gauge — pure SVG, no extra deps
-export const ResourceBar = memo(({ label, icon: Icon, percentage, color }: any) => (
-  <div className="mb-4 last:mb-0">
-    <div className="flex justify-between text-sm mb-1.5">
-      <div className="flex items-center gap-2 text-slate-300">
-        <Icon className="w-4 h-4" /> {label}
-      </div>
-      <span className="font-mono text-cyan-400">{percentage}%</span>
-    </div>
-    <div className="h-1.5 w-full bg-slate-800/50 rounded-full overflow-hidden">
-      <motion.div
-        initial={{ width: 0 }}
-        animate={{ width: `${percentage}%` }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className={`h-full rounded-full ${color}`}
-      />
-    </div>
-  </div>
-));
+});
 
 // Circular SVG gauge for the resources widget
 const CircularGauge = memo(({ pct, color, size = 80 }: { pct: number; color: string; size?: number }) => {
@@ -1059,7 +1039,7 @@ const getLatencyBg = (latency: number | null) => {
   return 'bg-red-500/20 border-red-500/30';
 };
 
-export const OrangePingWidget = ({ onRefresh }: { onRefresh?: () => void }) => {
+export const OrangePingWidget = memo(({ onRefresh }: { onRefresh?: () => void }) => {
   const { pingData, loading, measurePing } = useOrangePing();
   
   const handleRefresh = async () => {
@@ -1130,4 +1110,4 @@ export const OrangePingWidget = ({ onRefresh }: { onRefresh?: () => void }) => {
       </p>
     </motion.div>
   );
-};
+});

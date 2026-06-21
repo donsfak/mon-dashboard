@@ -185,7 +185,7 @@ export default function App() {
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Système</p>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: 'Host OS', value: sysInfo.os  ?? systemData.os },
+                      { label: 'Host OS', value: sysInfo.os ?? '—' },
                       { label: 'Uptime',  value: sysInfo.uptime ?? '…' },
                       { label: 'VPN IP',  value: systemData.ip, mono: true }
                     ].map(({ label, value, mono }) => (

@@ -1,10 +1,7 @@
 import { Film, Tv, Download, Search, MonitorPlay, Play, Magnet } from 'lucide-react';
 
 export const systemData = {
-  ip: "100.70.128.90",
-  os: "Zorin OS (IdeaPad Gaming 3)",
-  uptime: "14 jours, 5 heures",
-  homepageVersion: "v0.8.10",
+  ip: "100.70.128.90",   // Tailscale VPN IP
 };
 
 export const services = [

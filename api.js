@@ -15,15 +15,17 @@ const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
 // Cache for reducing repeated API calls
 const cache = {
-  dockerContainers:     { data: null, timestamp: 0, ttl: 10000  }, // 10s
-  tailscaleDevices:     { data: null, timestamp: 0, ttl: 30000  }, // 30s
-  orangePing:           { data: null, timestamp: 0, ttl: 30000  }, // 30s
-  jellyfinMovies:       { data: null, timestamp: 0, ttl: 60000  }, // 1 min
-  serviceUpdates:       { data: null, timestamp: 0, ttl: 300000 }, // 5 min
-  jellyseerRequests:    { data: null, timestamp: 0, ttl: 60000  }, // 1 min
-  jellyseerRecentlyAdded: { data: null, timestamp: 0, ttl: 60000 }, // 1 min
-  gmailInboxes:         { data: null, timestamp: 0, ttl: 120000 }, // 2 min
-  systemResources:      { data: null, timestamp: 0, ttl: 8000   }  // 8s
+  dockerContainers:       { data: null, timestamp: 0, ttl: 10000  },
+  tailscaleDevices:       { data: null, timestamp: 0, ttl: 30000  },
+  orangePing:             { data: null, timestamp: 0, ttl: 30000  },
+  jellyfinMovies:         { data: null, timestamp: 0, ttl: 60000  },
+  serviceUpdates:         { data: null, timestamp: 0, ttl: 300000 },
+  jellyseerRequests:      { data: null, timestamp: 0, ttl: 60000  },
+  jellyseerRecentlyAdded: { data: null, timestamp: 0, ttl: 60000  },
+  gmailInboxes:           { data: null, timestamp: 0, ttl: 120000 },
+  systemResources:        { data: null, timestamp: 0, ttl: 8000   },
+  weather:                { data: null, timestamp: 0, ttl: 600000 },
+  qbittorrentStats:       { data: null, timestamp: 0, ttl: 10000  },
 };
 
 const getCacheData = (key) => {
@@ -779,7 +781,8 @@ app.get('/api/network/orange-speed-test', async (req, res) => {
 });
 
 // ============= QBITTORRENT API =============
-const qbtCache = { sid: null, stats: null, statsTs: 0, statsTtl: 10000 };
+// SID is auth state (not data), kept outside main cache
+let qbtSid = null;
 
 const formatSpeed = (bps) => {
   if (!bps || bps === 0) return '0 KB/s';
@@ -805,20 +808,16 @@ const qbtLogin = async () => {
 
 const qbtFetch = async (path) => {
   const url = process.env.QBITTORRENT_URL?.replace(/\/$/, '');
-  if (!qbtCache.sid) qbtCache.sid = await qbtLogin();
-  if (!qbtCache.sid) return null;
+  if (!qbtSid) qbtSid = await qbtLogin();
+  if (!qbtSid) return null;
 
-  let res = await fetch(`${url}${path}`, {
-    headers: { Cookie: `SID=${qbtCache.sid}` }
-  });
+  let res = await fetch(`${url}${path}`, { headers: { Cookie: `SID=${qbtSid}` } });
 
   // SID expired — re-login once
   if (res.status === 403) {
-    qbtCache.sid = await qbtLogin();
-    if (!qbtCache.sid) return null;
-    res = await fetch(`${url}${path}`, {
-      headers: { Cookie: `SID=${qbtCache.sid}` }
-    });
+    qbtSid = await qbtLogin();
+    if (!qbtSid) return null;
+    res = await fetch(`${url}${path}`, { headers: { Cookie: `SID=${qbtSid}` } });
   }
 
   return res.ok ? res.json() : null;
@@ -826,9 +825,8 @@ const qbtFetch = async (path) => {
 
 app.get('/api/qbittorrent/stats', async (req, res) => {
   try {
-    if (qbtCache.stats && Date.now() - qbtCache.statsTs < qbtCache.statsTtl) {
-      return res.json(qbtCache.stats);
-    }
+    const cached = getCacheData('qbittorrentStats');
+    if (cached) return res.json(cached);
     if (!process.env.QBITTORRENT_URL) {
       return res.status(400).json({ error: 'QBITTORRENT_URL not configured' });
     }
@@ -848,8 +846,7 @@ app.get('/api/qbittorrent/stats', async (req, res) => {
       ulRaw:    transfer.up_info_speed
     };
 
-    qbtCache.stats = data;
-    qbtCache.statsTs = Date.now();
+    setCacheData('qbittorrentStats', data);
     res.json(data);
   } catch (error) {
     console.error('qBittorrent API error:', error.message);
@@ -858,15 +855,10 @@ app.get('/api/qbittorrent/stats', async (req, res) => {
 });
 
 // ============= WEATHER API =============
-// Uses OpenWeatherMap (https://openweathermap.org)
-// Configure via OPENWEATHER_API_KEY, WEATHER_CITY (or WEATHER_LAT + WEATHER_LON)
-const cache_weather = { data: null, timestamp: 0, ttl: 600000 }; // 10 min
-
 app.get('/api/weather', async (req, res) => {
   try {
-    if (cache_weather.data && Date.now() - cache_weather.timestamp < cache_weather.ttl) {
-      return res.json(cache_weather.data);
-    }
+    const cached = getCacheData('weather');
+    if (cached) return res.json(cached);
 
     const apiKey = process.env.OPENWEATHER_API_KEY;
     if (!apiKey) {
@@ -905,8 +897,7 @@ app.get('/api/weather', async (req, res) => {
       updatedAt:   new Date().toISOString()
     };
 
-    cache_weather.data = data;
-    cache_weather.timestamp = Date.now();
+    setCacheData('weather', data);
     res.json(data);
   } catch (error) {
     console.error('Weather API error:', error.message);
