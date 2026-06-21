@@ -74,6 +74,9 @@ services:
       # Comma-separated disk paths to monitor
       DISK_PATHS: ${DISK_PATHS:-/host_root,/mnt/Data}
 
+      # Real-Debrid (optional — enables live status check)
+      REAL_DEBRID_API_KEY: ${REAL_DEBRID_API_KEY:-}
+
       # qBittorrent
       QBITTORRENT_URL: ${QBITTORRENT_URL:-}
       QBITTORRENT_USERNAME: ${QBITTORRENT_USERNAME:-}

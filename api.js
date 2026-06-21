@@ -976,7 +976,30 @@ app.get('/api/system/resources', async (req, res) => {
       }
     }));
 
-    const data = { cpu, ram, disks };
+    // Real host OS from mounted /host_root (/ is bind-mounted as /host_root in docker-compose)
+    let hostOS = process.env.HOST_OS || null;
+    if (!hostOS) {
+      try {
+        const { stdout } = await execAsync(
+          "grep PRETTY_NAME /host_root/etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '\"'",
+          { timeout: 2000 }
+        );
+        hostOS = stdout.trim() || os.type();
+      } catch (_) { hostOS = os.type(); }
+    }
+
+    // Real host uptime from /proc/uptime (seconds since boot)
+    let uptime = null;
+    try {
+      const { stdout } = await execAsync("awk '{print $1}' /proc/uptime", { timeout: 1000 });
+      const secs = parseFloat(stdout.trim());
+      const d = Math.floor(secs / 86400);
+      const h = Math.floor((secs % 86400) / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      uptime = d > 0 ? `${d}j ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+    } catch (_) { /* uptime stays null */ }
+
+    const data = { cpu, ram, disks, os: hostOS, uptime };
     setCacheData('systemResources', data);
     res.json(data);
   } catch (error) {
@@ -1055,6 +1078,60 @@ app.get('/api/gmail/inboxes', async (req, res) => {
     console.error('Gmail API Error:', error.message);
     res.status(500).json({ error: error.message });
   }
+});
+
+// ============= SYSTEM STATUS =============
+// Checks active state of Docker, Tailscale and Real-Debrid
+app.get('/api/system/status', async (req, res) => {
+  const results = {};
+
+  // Docker — can we reach the socket and list containers?
+  try {
+    const list = await docker.listContainers({ all: true });
+    results.docker = {
+      active: true,
+      running: list.filter(c => c.State === 'running').length,
+      total: list.length
+    };
+  } catch (_) {
+    results.docker = { active: false, running: 0, total: 0 };
+  }
+
+  // Tailscale — ping the Cloud API
+  const tsKey    = process.env.TAILSCALE_API_KEY;
+  const tsTailnet = process.env.TAILSCALE_TAILNET;
+  if (tsKey && tsTailnet) {
+    try {
+      const authHeader = 'Basic ' + Buffer.from(tsKey + ':').toString('base64');
+      const r = await fetch(`https://api.tailscale.com/api/v2/tailnet/${tsTailnet}/devices`, {
+        headers: { Authorization: authHeader },
+        signal: AbortSignal.timeout(6000)
+      });
+      results.tailscale = { active: r.ok, configured: true };
+    } catch (_) {
+      results.tailscale = { active: false, configured: true };
+    }
+  } else {
+    results.tailscale = { active: false, configured: false };
+  }
+
+  // Real-Debrid — ping /user endpoint if API key is set
+  const rdKey = process.env.REAL_DEBRID_API_KEY;
+  if (rdKey) {
+    try {
+      const r = await fetch('https://api.real-debrid.com/rest/1.0/user', {
+        headers: { Authorization: `Bearer ${rdKey}` },
+        signal: AbortSignal.timeout(6000)
+      });
+      results.realDebrid = { active: r.ok, configured: true };
+    } catch (_) {
+      results.realDebrid = { active: false, configured: true };
+    }
+  } else {
+    results.realDebrid = { active: false, configured: false };
+  }
+
+  res.json(results);
 });
 
 // Health check

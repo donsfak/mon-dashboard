@@ -256,9 +256,11 @@ const useServiceUpdates = (initialServices: any[] = []) => {
   return services;
 };
 
-type DiskInfo = { path: string; label: string; percent: number; usedGb: number; totalGb: number };
-type RamInfo  = { percent: number; usedGb: number; totalGb: number };
-type Resources = { cpu: number; ram: RamInfo; disks: DiskInfo[] };
+type DiskInfo  = { path: string; label: string; percent: number; usedGb: number; totalGb: number };
+type RamInfo   = { percent: number; usedGb: number; totalGb: number };
+type Resources = { cpu: number; ram: RamInfo; disks: DiskInfo[]; os?: string; uptime?: string };
+type SvcStatus = { active: boolean; configured?: boolean; running?: number; total?: number };
+type SystemStatus = { docker?: SvcStatus; tailscale?: SvcStatus; realDebrid?: SvcStatus };
 
 const useSystemResources = () => {
   const [resources, setResources] = useState<Resources | null>(null);
@@ -323,6 +325,24 @@ export const useQbittorrentStats = () => {
   }, []);
 
   return stats;
+};
+
+export const useSystemStatus = () => {
+  const [status, setStatus] = useState<SystemStatus>({});
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/system/status`);
+        if (res.ok) setStatus(await res.json());
+      } catch (_) {}
+    };
+    const init = setTimeout(fetch_, 200);
+    const interval = setInterval(fetch_, 60000); // refresh every 60s
+    return () => { clearTimeout(init); clearInterval(interval); };
+  }, []);
+
+  return status;
 };
 
 export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData, useDockerContainers, useGmailData };

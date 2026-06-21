@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ShieldCheck, Activity, Network, Server, Package, LayoutDashboard } from 'lucide-react';
 import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies, jellyseerRequests, jellyseerRecentlyAdded } from './data/mockData';
-import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection, useDockerContainers, GmailWidget, useQbittorrentStats } from './components/DashboardUI';
+import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection, useDockerContainers, GmailWidget, useQbittorrentStats, useSystemStatus } from './components/DashboardUI';
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
@@ -28,6 +28,24 @@ export default function App() {
   const jellyseerData = useJellyseerData(jellyseerRequests, jellyseerRecentlyAdded);
   const { containers } = useDockerContainers();
   const qbtStats = useQbittorrentStats();
+  const sysStatus = useSystemStatus();
+
+  // Live system info (OS + uptime) from /api/system/resources
+  const [sysInfo, setSysInfo] = useState<{ os?: string; uptime?: string }>({});
+  useEffect(() => {
+    const fetchSysInfo = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:3001/api`}/system/resources`);
+        if (res.ok) {
+          const d = await res.json();
+          setSysInfo({ os: d.os, uptime: d.uptime });
+        }
+      } catch (_) {}
+    };
+    fetchSysInfo();
+    const interval = setInterval(fetchSysInfo, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const activeContainers = useMemo(
     () => containers.filter((c: any) => c.state === 'running').length,
@@ -142,29 +160,45 @@ export default function App() {
             <motion.section variants={fadeItem}>
               <SectionHeader icon={Activity} label="État de l'infrastructure" />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* Live service status badges */}
                 <div className="bg-glass border border-glassBorder rounded-2xl p-5 space-y-3">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Services actifs</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Services</p>
                   <div className="flex flex-wrap gap-2">
-                    <StatusBadge label="Docker Host Mode" active={true} />
-                    <StatusBadge label="Tailscale VPN" active={true} />
-                    <StatusBadge label="Real Debrid" active={true} />
+                    <StatusBadge
+                      label={`Docker (${sysStatus.docker?.running ?? '…'}/${sysStatus.docker?.total ?? '…'})`}
+                      active={sysStatus.docker?.active ?? false}
+                    />
+                    <StatusBadge
+                      label="Tailscale VPN"
+                      active={sysStatus.tailscale?.active ?? false}
+                    />
+                    <StatusBadge
+                      label={sysStatus.realDebrid?.configured ? 'Real Debrid' : 'Real Debrid (non configuré)'}
+                      active={sysStatus.realDebrid?.active ?? false}
+                    />
                   </div>
                 </div>
+
+                {/* Live system info */}
                 <div className="bg-glass border border-glassBorder rounded-2xl p-5">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Système</p>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: 'Host OS', value: systemData.os },
-                      { label: 'Uptime',  value: systemData.uptime },
+                      { label: 'Host OS', value: sysInfo.os  ?? systemData.os },
+                      { label: 'Uptime',  value: sysInfo.uptime ?? '…' },
                       { label: 'VPN IP',  value: systemData.ip, mono: true }
                     ].map(({ label, value, mono }) => (
                       <div key={label}>
                         <p className="text-[10px] text-slate-500 mb-0.5">{label}</p>
-                        <p className={`text-xs font-medium text-white ${mono ? 'font-mono text-cyan-400' : ''} truncate`}>{value}</p>
+                        <p className={`text-xs font-medium text-white truncate ${mono ? 'font-mono text-cyan-400' : ''}`}>
+                          {value}
+                        </p>
                       </div>
                     ))}
                   </div>
                 </div>
+
               </div>
             </motion.section>
 
