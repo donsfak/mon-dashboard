@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ShieldCheck, Activity, Network, Server, Package } from 'lucide-react';
 import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies, jellyseerRequests, jellyseerRecentlyAdded } from './data/mockData';
-import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection, useDockerContainers, GmailWidget } from './components/DashboardUI';
+import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection, useDockerContainers, GmailWidget, useQbittorrentStats } from './components/DashboardUI';
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
@@ -15,12 +15,27 @@ const fadeItem: Variants = {
 };
 
 export default function App() {
-  const { speed, loading, measureSpeed } = useInternetSpeed();
+  const { speed, loading, measureSpeed, testedAt } = useInternetSpeed();
   const servicesWithUpdates = useServiceUpdates(services);
   const jellyseerData = useJellyseerData(jellyseerRequests, jellyseerRecentlyAdded);
   const { containers } = useDockerContainers();
+  const qbtStats = useQbittorrentStats();
   const activeContainers = containers.filter((c: any) => c.state === 'running').length;
   const displayActiveCount = activeContainers > 0 ? activeContainers : services.length;
+
+  // Inject real qBittorrent stats into the service card
+  const servicesWithLiveStats = servicesWithUpdates.map((svc: any) => {
+    if (svc.title === 'qBittorrent' && qbtStats) {
+      return {
+        ...svc,
+        stats: [
+          { label: 'Actifs', value: `${qbtStats.active} torrent${qbtStats.active !== 1 ? 's' : ''}`, color: 'text-emerald-400' },
+          { label: 'DL', value: qbtStats.dlSpeed, color: 'text-cyan-400' }
+        ]
+      };
+    }
+    return svc;
+  });
 
   return (
     <div className="min-h-screen bg-background text-slate-200 font-sans p-4 md:p-6 selection:bg-cyan-500/30">
@@ -36,7 +51,7 @@ export default function App() {
             <ClockWidget />
             <CalendarWidget />
             <WeatherWidget />
-            <InternetSpeedWidget speed={speed} loading={loading} onMeasure={measureSpeed} />
+            <InternetSpeedWidget speed={speed} loading={loading} onMeasure={measureSpeed} testedAt={testedAt} />
             <GmailWidget />
             <OrangePingWidget />
             <JellyfinMovies movies={jellyfinMovies} />
@@ -82,8 +97,8 @@ export default function App() {
                 <Server className="w-5 h-5 text-cyan-400" />
                 Mon centre multimédia
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                {servicesWithUpdates.map((svc) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {servicesWithLiveStats.map((svc: any) => (
                   <ServiceCard key={svc.title} service={svc} />
                 ))}
               </div>

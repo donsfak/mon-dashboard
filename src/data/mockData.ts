@@ -1,4 +1,4 @@
-import { Film, Tv, Download, Search, MonitorPlay } from 'lucide-react';
+import { Film, Tv, Download, Search, MonitorPlay, Play, Magnet } from 'lucide-react';
 
 export const systemData = {
   ip: "100.70.128.90",
@@ -42,7 +42,7 @@ export const services = [
       { label: "À venir", value: "8", color: "text-amber-400" }
     ],
     health: "healthy",
-    updateAvailable: true
+    updateAvailable: false
   },
   {
     title: "Prowlarr",
@@ -62,8 +62,32 @@ export const services = [
     status: "active",
     href: `http://${systemData.ip}:6500`,
     stats: [
-      { label: "Actifs", value: "2 DL", color: "text-emerald-400" }, 
+      { label: "Actifs", value: "2 DL", color: "text-emerald-400" },
       { label: "Stockage", value: "1.4 TB", color: "text-cyan-400" }
+    ],
+    health: "healthy",
+    updateAvailable: false
+  },
+  {
+    title: "Jellyfin",
+    icon: Play,
+    status: "active",
+    href: `http://${systemData.ip}:8096`,
+    stats: [
+      { label: "Films", value: "847", color: "text-cyan-400" },
+      { label: "Séries", value: "45", color: "text-emerald-400" }
+    ],
+    health: "healthy",
+    updateAvailable: false
+  },
+  {
+    title: "qBittorrent",
+    icon: Magnet,
+    status: "active",
+    href: `http://0.0.0.0:8090`,
+    stats: [
+      { label: "Actifs", value: "3 DL", color: "text-emerald-400" },
+      { label: "Vitesse", value: "4.2 MB/s", color: "text-cyan-400" }
     ],
     health: "healthy",
     updateAvailable: false

@@ -13,15 +13,15 @@ const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
 // Cache for reducing repeated API calls
 const cache = {
-  dockerContainers: { data: null, timestamp: 0, ttl: 5000 },
-  tailscaleDevices: { data: null, timestamp: 0, ttl: 5000 },
-  orangePing: { data: null, timestamp: 0, ttl: 10000 },
-  jellyfinMovies: { data: null, timestamp: 0, ttl: 30000 },
-  serviceUpdates: { data: null, timestamp: 0, ttl: 300000 },
-  jellyseerRequests: { data: null, timestamp: 0, ttl: 30000 },
-  jellyseerRecentlyAdded: { data: null, timestamp: 0, ttl: 30000 },
-  gmailInboxes: { data: null, timestamp: 0, ttl: 120000 },
-  systemResources: { data: null, timestamp: 0, ttl: 5000 }
+  dockerContainers:     { data: null, timestamp: 0, ttl: 10000  }, // 10s
+  tailscaleDevices:     { data: null, timestamp: 0, ttl: 30000  }, // 30s
+  orangePing:           { data: null, timestamp: 0, ttl: 30000  }, // 30s
+  jellyfinMovies:       { data: null, timestamp: 0, ttl: 60000  }, // 1 min
+  serviceUpdates:       { data: null, timestamp: 0, ttl: 300000 }, // 5 min
+  jellyseerRequests:    { data: null, timestamp: 0, ttl: 60000  }, // 1 min
+  jellyseerRecentlyAdded: { data: null, timestamp: 0, ttl: 60000 }, // 1 min
+  gmailInboxes:         { data: null, timestamp: 0, ttl: 120000 }, // 2 min
+  systemResources:      { data: null, timestamp: 0, ttl: 8000   }  // 8s
 };
 
 const getCacheData = (key) => {
@@ -66,22 +66,30 @@ const CUSTOM_SERVERS = process.env.CUSTOM_NETWORK_SERVERS
 // Ping function with timeout and retry logic
 const pingHost = async (host, timeout = 5000) => {
   try {
-    // Method 1: Try fping first (fastest)
+    // Method 1: Try fping first — -p 100 spaces pings 100ms apart → ~300ms total vs ~2s default
     try {
-      const { stdout, stderr } = await execAsync(
-        `fping -q -c 3 -t ${timeout} ${host} 2>&1`,
+      const { stdout } = await execAsync(
+        `fping -q -c 3 -p 100 -t ${timeout} ${host} 2>&1`,
         { timeout }
       );
-      
-      // Parse fping output: "185.36.27.18 : 45.2 45.1 45.3"
-      const match = stdout.match(/\d+\.\d+\.\d+\.\d+\s*:\s*([\d.]+\s+)+/);
-      if (match) {
-        const latencies = stdout.match(/([\d.]+)\s+/g).map(x => parseFloat(x));
+      // fping summary: "host : xmt/rcv/%loss = min/avg/max"
+      const summary = stdout.match(/=\s*([\d.]+)\/([\d.]+)\/([\d.]+)/);
+      if (summary) {
         return {
           success: true,
-          avgLatency: Math.round(latencies.reduce((a, b) => a + b) / latencies.length),
-          minLatency: Math.round(Math.min(...latencies)),
-          maxLatency: Math.round(Math.max(...latencies))
+          minLatency: Math.round(parseFloat(summary[1])),
+          avgLatency: Math.round(parseFloat(summary[2])),
+          maxLatency: Math.round(parseFloat(summary[3]))
+        };
+      }
+      // Fallback: individual time format "host : t1 t2 t3"
+      const times = stdout.match(/([\d.]+)\s+/g)?.map(x => parseFloat(x));
+      if (times?.length) {
+        return {
+          success: true,
+          avgLatency: Math.round(times.reduce((a, b) => a + b) / times.length),
+          minLatency: Math.round(Math.min(...times)),
+          maxLatency: Math.round(Math.max(...times))
         };
       }
     } catch (e1) {
@@ -525,42 +533,69 @@ app.get('/api/services/updates', async (req, res) => {
     }
 
     const services = [
-      { key: 'sonarr', url: process.env.SONARR_URL, apiKey: process.env.SONARR_API_KEY },
-      { key: 'radarr', url: process.env.RADARR_URL, apiKey: process.env.RADARR_API_KEY },
-      { key: 'prowlarr', url: process.env.PROWLARR_URL, apiKey: process.env.PROWLARR_API_KEY }
+      { key: 'sonarr',      url: process.env.SONARR_URL,    apiKey: process.env.SONARR_API_KEY,    type: 'arr' },
+      { key: 'radarr',      url: process.env.RADARR_URL,    apiKey: process.env.RADARR_API_KEY,    type: 'arr' },
+      { key: 'prowlarr',    url: process.env.PROWLARR_URL,  apiKey: process.env.PROWLARR_API_KEY,  type: 'arr' },
+      { key: 'jellyfin',    url: process.env.JELLYFIN_URL,  apiKey: process.env.JELLYFIN_API_KEY,  type: 'jellyfin' }
     ];
 
-    const fetchUpdateStatus = async ({ url, apiKey }) => {
-      if (!url || !apiKey) {
-        return null;
-      }
-
-      const endpoints = ['api/v3/update', 'api/v1/update'];
-      for (const endpoint of endpoints) {
+    // *Arr apps (Sonarr/Radarr/Prowlarr) update check
+    // The /update endpoint returns version history; only items with installable:true are pending updates
+    const fetchArrUpdateStatus = async ({ url, apiKey }) => {
+      if (!url || !apiKey) return null;
+      for (const endpoint of ['api/v3/update', 'api/v1/update']) {
         try {
           const response = await fetch(`${url.replace(/\/$/, '')}/${endpoint}`, {
             headers: { 'X-Api-Key': apiKey }
           });
-          if (!response.ok) {
-            continue;
-          }
+          if (!response.ok) continue;
           const data = await response.json();
           if (Array.isArray(data)) {
-            return data.some((item) => item && item.available === true) || data.length > 0;
+            return data.some((item) => item && item.installable === true);
           }
           return false;
-        } catch (error) {
-          // Try next endpoint
-        }
+        } catch (_) { /* try next */ }
       }
-
       return null;
     };
 
+    // Jellyfin update check: compare running version with latest GitHub release
+    const fetchJellyfinUpdateStatus = async ({ url, apiKey }) => {
+      if (!url || !apiKey) return null;
+      try {
+        const [infoRes, ghRes] = await Promise.all([
+          fetch(`${url.replace(/\/$/, '')}/System/Info`, {
+            headers: { Authorization: `MediaBrowser Token="${apiKey}"` }
+          }),
+          fetch('https://api.github.com/repos/jellyfin/jellyfin/releases/latest', {
+            headers: { Accept: 'application/vnd.github+json' }
+          })
+        ]);
+        if (!infoRes.ok || !ghRes.ok) return null;
+        const info = await infoRes.json();
+        const gh   = await ghRes.json();
+        const current = (info.Version || '').replace(/^v/, '');
+        const latest  = (gh.tag_name  || '').replace(/^v/, '');
+        if (!current || !latest) return null;
+        // Simple semver comparison: split on '.' and compare each part
+        const toNum = (v) => v.split('.').map(Number);
+        const [ca, cb, cc] = toNum(current);
+        const [la, lb, lc] = toNum(latest);
+        return la > ca || (la === ca && lb > cb) || (la === ca && lb === cb && lc > cc);
+      } catch (_) {
+        return null;
+      }
+    };
+
+    const fetchUpdateStatus = async (service) => {
+      if (service.type === 'jellyfin') return fetchJellyfinUpdateStatus(service);
+      return fetchArrUpdateStatus(service);
+    };
+
     const results = {};
-    for (const service of services) {
-      results[service.key] = {
-        updateAvailable: await fetchUpdateStatus(service)
+    for (const svc of services) {
+      results[svc.key] = {
+        updateAvailable: await fetchUpdateStatus(svc)
       };
     }
 
@@ -656,6 +691,85 @@ app.get('/api/network/orange-speed-test', async (req, res) => {
     console.error('Speed Test Error:', error.message);
     // En cas d'échec (pas de connexion, timeout), on renvoie une erreur propre
     res.status(500).json({ error: 'Le test de débit a échoué. Vérifiez la connexion.' });
+  }
+});
+
+// ============= QBITTORRENT API =============
+const qbtCache = { sid: null, stats: null, statsTs: 0, statsTtl: 10000 };
+
+const formatSpeed = (bps) => {
+  if (!bps || bps === 0) return '0 KB/s';
+  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+  return `${(bps / (1024 * 1024)).toFixed(2)} MB/s`;
+};
+
+const qbtLogin = async () => {
+  const url = process.env.QBITTORRENT_URL?.replace(/\/$/, '');
+  const username = process.env.QBITTORRENT_USERNAME;
+  const password = process.env.QBITTORRENT_PASSWORD;
+  if (!url || !username || !password) return null;
+
+  const res = await fetch(`${url}/api/v2/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+  });
+  const setCookie = res.headers.get('set-cookie') || '';
+  const match = setCookie.match(/SID=([^;]+)/);
+  return match ? match[1] : null;
+};
+
+const qbtFetch = async (path) => {
+  const url = process.env.QBITTORRENT_URL?.replace(/\/$/, '');
+  if (!qbtCache.sid) qbtCache.sid = await qbtLogin();
+  if (!qbtCache.sid) return null;
+
+  let res = await fetch(`${url}${path}`, {
+    headers: { Cookie: `SID=${qbtCache.sid}` }
+  });
+
+  // SID expired — re-login once
+  if (res.status === 403) {
+    qbtCache.sid = await qbtLogin();
+    if (!qbtCache.sid) return null;
+    res = await fetch(`${url}${path}`, {
+      headers: { Cookie: `SID=${qbtCache.sid}` }
+    });
+  }
+
+  return res.ok ? res.json() : null;
+};
+
+app.get('/api/qbittorrent/stats', async (req, res) => {
+  try {
+    if (qbtCache.stats && Date.now() - qbtCache.statsTs < qbtCache.statsTtl) {
+      return res.json(qbtCache.stats);
+    }
+    if (!process.env.QBITTORRENT_URL) {
+      return res.status(400).json({ error: 'QBITTORRENT_URL not configured' });
+    }
+
+    const [transfer, torrents] = await Promise.all([
+      qbtFetch('/api/v2/transfer/info'),
+      qbtFetch('/api/v2/torrents/info?filter=active')
+    ]);
+
+    if (!transfer) return res.status(502).json({ error: 'qBittorrent unreachable' });
+
+    const data = {
+      active:   Array.isArray(torrents) ? torrents.length : 0,
+      dlSpeed:  formatSpeed(transfer.dl_info_speed),
+      ulSpeed:  formatSpeed(transfer.up_info_speed),
+      dlRaw:    transfer.dl_info_speed,
+      ulRaw:    transfer.up_info_speed
+    };
+
+    qbtCache.stats = data;
+    qbtCache.statsTs = Date.now();
+    res.json(data);
+  } catch (error) {
+    console.error('qBittorrent API error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -53,20 +53,17 @@ const useTailscaleDevices = () => {
     const fetchDevices = async () => {
       try {
         const res = await fetch(`${API_BASE}/tailscale/devices`);
-        if (res.ok) {
-          const data = await res.json();
-          setDevices(data);
-        }
+        if (res.ok) setDevices(await res.json());
       } catch (err) {
-        console.warn('Failed to fetch real Tailscale data, using mock:', err);
+        console.warn('Failed to fetch Tailscale data:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDevices();
-    const interval = setInterval(fetchDevices, 5000); // Poll every 5 seconds
-    return () => clearInterval(interval);
+    const init = setTimeout(fetchDevices, 400);
+    const interval = setInterval(fetchDevices, 60000); // 60s — devices don't change often
+    return () => { clearTimeout(init); clearInterval(interval); };
   }, []);
 
   return { devices, loading };
@@ -101,48 +98,46 @@ const useOrangePing = () => {
   return { pingData, loading, measurePing };
 };
 
+const SPEED_STORAGE_KEY = 'mediahub_last_speed';
+
 const useInternetSpeed = () => {
-  const [speed, setSpeed] = useState<{ download: number; upload: number; latency: number } | null>(null);
+  const [speed, setSpeed] = useState<{ download: number; upload: number; latency: number } | null>(() => {
+    try { return JSON.parse(localStorage.getItem(SPEED_STORAGE_KEY) || 'null'); } catch { return null; }
+  });
   const [loading, setLoading] = useState(false);
+  const [testedAt, setTestedAt] = useState<Date | null>(() => {
+    try {
+      const ts = localStorage.getItem(SPEED_STORAGE_KEY + '_ts');
+      return ts ? new Date(ts) : null;
+    } catch { return null; }
+  });
 
   const measureSpeed = async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/network/orange-speed-test`);
-      if (res.ok) {
-        const data = await res.json();
-        
-        // Aggregate speed test results from all servers
-        const servers = Object.values(data as any[]);
-        const successfulTests = servers.filter((s: any) => s.success);
-        
-        if (successfulTests.length > 0) {
-          // Average the results from all successful servers
-          const avgDownload = Math.round(
-            successfulTests.reduce((sum: number, s: any) => sum + (s.download || 0), 0) / successfulTests.length
-          );
-          const avgUpload = Math.round(
-            successfulTests.reduce((sum: number, s: any) => sum + (s.upload || 0), 0) / successfulTests.length
-          );
-          const avgLatency = Math.round(
-            successfulTests.reduce((sum: number, s: any) => sum + (s.latency || 0), 0) / successfulTests.length
-          );
-          
-          setSpeed({ download: avgDownload, upload: avgUpload, latency: avgLatency });
-        } else {
-          throw new Error('No servers responded to speed test');
-        }
-      }
+      if (!res.ok) throw new Error('Test failed');
+      const data = await res.json();
+      const servers = Object.values(data as any[]).filter((s: any) => s.success);
+      if (!servers.length) throw new Error('No response');
+      const result = {
+        download: Math.round(servers.reduce((s: number, v: any) => s + (v.download || 0), 0) / servers.length),
+        upload:   Math.round(servers.reduce((s: number, v: any) => s + (v.upload   || 0), 0) / servers.length),
+        latency:  Math.round(servers.reduce((s: number, v: any) => s + (v.latency  || 0), 0) / servers.length)
+      };
+      const now = new Date();
+      setSpeed(result);
+      setTestedAt(now);
+      localStorage.setItem(SPEED_STORAGE_KEY, JSON.stringify(result));
+      localStorage.setItem(SPEED_STORAGE_KEY + '_ts', now.toISOString());
     } catch (err) {
-      console.warn('Orange speed test failed:', err);
-      // Fallback mock values
-      setSpeed({ download: 85, upload: 40, latency: 55 });
+      console.warn('Speed test failed:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  return { speed, loading, measureSpeed };
+  return { speed, loading, measureSpeed, testedAt };
 };
 
 const useJellyfinMovies = (initialMovies: any[] = []) => {
@@ -187,20 +182,17 @@ const useJellyseerData = (initialRequests: any[] = [], initialAdded: any[] = [])
           fetch(`${API_BASE}/jellyseer/requests`),
           fetch(`${API_BASE}/jellyseer/recently-added`)
         ]);
-        if (requestsRes.ok) {
-          setRequests(await requestsRes.json());
-        }
-        if (addedRes.ok) {
-          setRecentlyAdded(await addedRes.json());
-        }
+        if (requestsRes.ok) setRequests(await requestsRes.json());
+        if (addedRes.ok)    setRecentlyAdded(await addedRes.json());
       } catch (err) {
         console.warn('Failed to fetch Jellyseer data:', err);
       }
     };
 
-    fetchData();
-    const interval = setInterval(fetchData, 60000);
-    return () => clearInterval(interval);
+    // Stagger by 800ms so Jellyseer doesn't compete with Docker/resources on initial load
+    const init = setTimeout(fetchData, 800);
+    const interval = setInterval(fetchData, 90000); // 90s
+    return () => { clearTimeout(init); clearInterval(interval); };
   }, []);
 
   return { requests, recentlyAdded };
@@ -214,10 +206,8 @@ const useGmailData = () => {
     const fetchGmail = async () => {
       try {
         const res = await fetch(`${API_BASE}/gmail/inboxes`);
-        if (res.ok) {
-          const data = await res.json();
-          setInboxes(data);
-        }
+        if (res.ok) setInboxes(await res.json());
+        else setInboxes([]);
       } catch (err) {
         console.warn('Failed to fetch Gmail data:', err);
         setInboxes([]);
@@ -226,9 +216,9 @@ const useGmailData = () => {
       }
     };
 
-    fetchGmail();
-    const interval = setInterval(fetchGmail, 120000); // Poll every 2 minutes
-    return () => clearInterval(interval);
+    const init = setTimeout(fetchGmail, 600);
+    const interval = setInterval(fetchGmail, 120000);
+    return () => { clearTimeout(init); clearInterval(interval); };
   }, []);
 
   return { inboxes, loading };
@@ -245,12 +235,7 @@ const useServiceUpdates = (initialServices: any[] = []) => {
           const data = await res.json();
           setServices((prev) => prev.map((service) => {
             const key = service.title?.toLowerCase();
-            if (!key || !data[key]) {
-              return service;
-            }
-            if (typeof data[key].updateAvailable !== 'boolean') {
-              return service;
-            }
+            if (!key || !data[key] || typeof data[key].updateAvailable !== 'boolean') return service;
             return { ...service, updateAvailable: data[key].updateAvailable };
           }));
         }
@@ -259,9 +244,10 @@ const useServiceUpdates = (initialServices: any[] = []) => {
       }
     };
 
-    fetchUpdates();
+    // Stagger by 1200ms — update checks are low priority on load
+    const init = setTimeout(fetchUpdates, 1200);
     const interval = setInterval(fetchUpdates, 300000);
-    return () => clearInterval(interval);
+    return () => { clearTimeout(init); clearInterval(interval); };
   }, []);
 
   return services;
@@ -312,6 +298,24 @@ const useWeather = () => {
   }, []);
 
   return { weather, loading };
+};
+
+export const useQbittorrentStats = () => {
+  const [stats, setStats] = useState<{ active: number; dlSpeed: string; ulSpeed: string } | null>(null);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/qbittorrent/stats`);
+        if (res.ok) setStats(await res.json());
+      } catch (_) {}
+    };
+    fetch_();
+    const interval = setInterval(fetch_, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return stats;
 };
 
 export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData, useDockerContainers, useGmailData };
@@ -429,36 +433,59 @@ export const CalendarWidget = () => {
   );
 };
 
-export const InternetSpeedWidget = ({ speed, loading, onMeasure }: any) => (
+const timeAgo = (date: Date | null) => {
+  if (!date) return null;
+  const mins = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (mins < 1) return "à l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  return `il y a ${hrs}h`;
+};
+
+export const InternetSpeedWidget = ({ speed, loading, onMeasure, testedAt }: any) => (
   <motion.button
     onClick={onMeasure}
     whileHover={{ scale: 1.02 }}
     className={`${GlassStyle} ${CardHover} w-full text-left`}
     disabled={loading}
   >
-    <div className="flex items-center gap-2 mb-3">
-      <Zap className="w-4 h-4 text-yellow-400" />
-      <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">Internet</span>
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <Zap className={`w-4 h-4 ${loading ? 'animate-pulse text-yellow-300' : 'text-yellow-400'}`} />
+        <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">Internet</span>
+      </div>
+      {testedAt && !loading && (
+        <span className="text-[10px] text-slate-500">{timeAgo(testedAt)}</span>
+      )}
     </div>
     {loading ? (
-      <p className="text-slate-400 text-sm">Testing...</p>
+      <div className="space-y-2">
+        <div className="h-3 bg-slate-700/50 rounded animate-pulse w-3/4" />
+        <div className="h-3 bg-slate-700/50 rounded animate-pulse w-1/2" />
+        <div className="h-3 bg-slate-700/50 rounded animate-pulse w-2/3" />
+        <p className="text-xs text-slate-500 mt-1">Test en cours (~30s)…</p>
+      </div>
     ) : speed ? (
       <div className="space-y-2">
         <div className="flex justify-between items-center">
-          <span className="text-xs text-slate-400">Download</span>
+          <span className="text-xs text-slate-400">↓ Download</span>
           <span className="font-mono text-cyan-400 font-medium">{speed.download} Mbps</span>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-xs text-slate-400">Upload</span>
+          <span className="text-xs text-slate-400">↑ Upload</span>
           <span className="font-mono text-emerald-400 font-medium">{speed.upload} Mbps</span>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-xs text-slate-400">Latency</span>
-          <span className="font-mono text-amber-400 font-medium">{speed.latency}ms</span>
+          <span className="text-xs text-slate-400">Ping</span>
+          <span className="font-mono text-amber-400 font-medium">{speed.latency} ms</span>
         </div>
+        <p className="text-[10px] text-slate-600 pt-1 text-center">Cliquer pour relancer</p>
       </div>
     ) : (
-      <p className="text-slate-400 text-sm">Click to test</p>
+      <div className="text-center py-1">
+        <p className="text-slate-400 text-sm mb-1">Cliquer pour tester</p>
+        <p className="text-xs text-slate-600">Durée ~30 secondes</p>
+      </div>
     )}
   </motion.button>
 );
@@ -554,10 +581,10 @@ export const ResourcesWidget = () => {
 };
 
 export const ServiceCard = ({ service }: any) => (
-  <motion.a 
-    href={service.href} 
+  <motion.a
+    href={service.href}
     target="_blank"
-    whileHover={{ scale: 1.02, y: -2 }} 
+    whileHover={{ scale: 1.02, y: -2 }}
     className={`${GlassStyle} ${CardHover} group block cursor-pointer relative`}
   >
     <div className="flex justify-between items-start mb-5">
@@ -565,24 +592,30 @@ export const ServiceCard = ({ service }: any) => (
         <service.icon className="w-6 h-6 text-cyan-400" />
       </div>
       <div className="flex flex-col items-end gap-2">
-        <div className="flex items-center gap-2">
-          {service.health === 'healthy' && (
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse-slow" />
-          )}
-          {service.health === 'warning' && (
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
-          )}
-          <span className="text-xs font-medium text-slate-400 capitalize">{service.health}</span>
-        </div>
-        {service.updateAvailable && (
-          <motion.div 
-            animate={{ scale: [1, 1.1, 1] }}
+        {service.updateAvailable === true ? (
+          <motion.div
+            animate={{ scale: [1, 1.08, 1] }}
             transition={{ duration: 2, repeat: Infinity }}
-            className="px-2 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full flex items-center gap-1"
+            className="px-2 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full flex items-center gap-1.5"
           >
             <AlertCircle className="w-3 h-3 text-amber-400" />
-            <span className="text-xs text-amber-300 font-medium">Update</span>
+            <span className="text-xs text-amber-300 font-medium">Mise à jour</span>
           </motion.div>
+        ) : (
+          <div className={`px-2 py-1 rounded-full flex items-center gap-1.5 border ${
+            service.health === 'warning'
+              ? 'bg-amber-500/10 border-amber-500/20'
+              : 'bg-emerald-500/10 border-emerald-500/20'
+          }`}>
+            <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+              service.health === 'warning' ? 'bg-amber-400' : 'bg-emerald-400'
+            }`} />
+            <span className={`text-xs font-medium ${
+              service.health === 'warning' ? 'text-amber-300' : 'text-emerald-300'
+            }`}>
+              {service.health === 'warning' ? 'Attention' : 'Actif'}
+            </span>
+          </div>
         )}
       </div>
     </div>
