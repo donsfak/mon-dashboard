@@ -1,18 +1,26 @@
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
-import { ShieldCheck, Activity, Network, Server, Package } from 'lucide-react';
+import { ShieldCheck, Activity, Network, Server, Package, LayoutDashboard } from 'lucide-react';
 import { systemData, services, tailscaleDevices, dockerContainers, jellyfinMovies, jellyseerRequests, jellyseerRecentlyAdded } from './data/mockData';
 import { ClockWidget, WeatherWidget, CalendarWidget, InternetSpeedWidget, ResourcesWidget, ServiceCard, StatusBadge, TailscaleList, DockerList, OrangePingWidget, JellyfinMovies, useInternetSpeed, useServiceUpdates, useJellyseerData, JellyseerSection, useDockerContainers, GmailWidget, useQbittorrentStats } from './components/DashboardUI';
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } }
+  show: { opacity: 1, transition: { staggerChildren: 0.08 } }
 };
 
 const fadeItem: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } }
 };
+
+// Sidebar section label divider
+const SidebarLabel = ({ label }: { label: string }) => (
+  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600 px-1 pt-2 pb-0.5 select-none">
+    {label}
+  </p>
+);
 
 export default function App() {
   const { speed, loading, measureSpeed, testedAt } = useInternetSpeed();
@@ -20,151 +28,172 @@ export default function App() {
   const jellyseerData = useJellyseerData(jellyseerRequests, jellyseerRecentlyAdded);
   const { containers } = useDockerContainers();
   const qbtStats = useQbittorrentStats();
-  const activeContainers = containers.filter((c: any) => c.state === 'running').length;
+
+  const activeContainers = useMemo(
+    () => containers.filter((c: any) => c.state === 'running').length,
+    [containers]
+  );
   const displayActiveCount = activeContainers > 0 ? activeContainers : services.length;
 
-  // Inject real qBittorrent stats into the service card
-  const servicesWithLiveStats = servicesWithUpdates.map((svc: any) => {
-    if (svc.title === 'qBittorrent' && qbtStats) {
-      return {
-        ...svc,
-        stats: [
-          { label: 'Actifs', value: `${qbtStats.active} torrent${qbtStats.active !== 1 ? 's' : ''}`, color: 'text-emerald-400' },
-          { label: 'DL', value: qbtStats.dlSpeed, color: 'text-cyan-400' }
-        ]
-      };
-    }
-    return svc;
-  });
+  const servicesWithLiveStats = useMemo(() =>
+    servicesWithUpdates.map((svc: any) => {
+      if (svc.title === 'qBittorrent' && qbtStats) {
+        return {
+          ...svc,
+          stats: [
+            { label: 'Actifs', value: `${qbtStats.active} torrent${qbtStats.active !== 1 ? 's' : ''}`, color: 'text-emerald-400' },
+            { label: 'DL', value: qbtStats.dlSpeed, color: 'text-cyan-400' }
+          ]
+        };
+      }
+      return svc;
+    }),
+    [servicesWithUpdates, qbtStats]
+  );
 
   return (
-    <div className="min-h-screen bg-background text-slate-200 font-sans p-4 md:p-6 selection:bg-cyan-500/30">
-      <div className="flex gap-6 max-w-7xl mx-auto">
-        {/* LEFT SIDEBAR */}
-        <div className="w-full md:w-80 flex-shrink-0 space-y-4">
+    <div className="min-h-screen bg-background text-slate-200 font-sans selection:bg-cyan-500/30">
+
+      {/* ── Top nav bar ─────────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-background/80 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-12 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <LayoutDashboard className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+            <span className="font-bold text-sm bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 tracking-wider">
+              MEDIAHUB
+            </span>
+            <span className="text-slate-600 text-xs hidden sm:inline">/ Centre multimédia personnel</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-medium text-emerald-400">{displayActiveCount} actifs</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-cyan-500/10 border border-cyan-500/20 rounded-full">
+              <ShieldCheck className="w-3 h-3 text-cyan-400" />
+              <span className="text-[11px] font-medium text-cyan-400">VPN {systemData.ip}</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex gap-0 max-w-7xl mx-auto">
+
+        {/* ── Left sidebar ────────────────────────────────────────────────────── */}
+        <aside className="hidden md:block w-72 flex-shrink-0">
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 0, x: -16 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-            className="space-y-4 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pr-2"
+            transition={{ duration: 0.4 }}
+            className="sticky top-12 max-h-[calc(100vh-3rem)] overflow-y-auto space-y-2 px-4 py-5 pr-3
+                       scrollbar-thin scrollbar-thumb-slate-700/50 scrollbar-track-transparent"
           >
+            <SidebarLabel label="Temps &amp; Météo" />
             <ClockWidget />
             <CalendarWidget />
             <WeatherWidget />
+
+            <SidebarLabel label="Connexion" />
             <InternetSpeedWidget speed={speed} loading={loading} onMeasure={measureSpeed} testedAt={testedAt} />
-            <GmailWidget />
             <OrangePingWidget />
+
+            <SidebarLabel label="Communications" />
+            <GmailWidget />
+
+            <SidebarLabel label="Médias" />
             <JellyfinMovies movies={jellyfinMovies} />
           </motion.div>
-        </div>
+        </aside>
 
-        {/* MAIN CONTENT */}
-        <div className="flex-1 min-w-0">
+        {/* ── Main content ────────────────────────────────────────────────────── */}
+        <main className="flex-1 min-w-0 px-4 md:px-6 py-6">
           <motion.div
             variants={staggerContainer}
             initial="hidden"
             animate="show"
-            className="space-y-8"
+            className="space-y-10"
           >
-            {/* HEADER */}
-            <motion.header variants={fadeItem} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500 tracking-tight">
-                  MEDIAHUB
-                </h1>
-                <p className="text-slate-400 mt-1">Dashboard — Centre multimédia personnel</p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-xs font-medium text-emerald-400">{displayActiveCount} services actifs</span>
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/20 rounded-full">
-                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  <span className="text-xs font-medium text-cyan-400">Tailscale {systemData.ip}</span>
-                </div>
-              </div>
-            </motion.header>
 
-            {/* RESOURCES WIDGET */}
-            <motion.div variants={fadeItem}>
-              <ResourcesWidget />
-            </motion.div>
-
-            {/* MEDIA CENTER GRID */}
+            {/* System resources */}
             <motion.section variants={fadeItem}>
-              <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-                <Server className="w-5 h-5 text-cyan-400" />
-                Mon centre multimédia
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <SectionHeader icon={Activity} label="Ressources système" />
+              <ResourcesWidget />
+            </motion.section>
+
+            {/* Multimedia services */}
+            <motion.section variants={fadeItem}>
+              <SectionHeader icon={Server} label="Centre multimédia" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {servicesWithLiveStats.map((svc: any) => (
                   <ServiceCard key={svc.title} service={svc} />
                 ))}
               </div>
             </motion.section>
 
+            {/* Jellyseerr */}
             <motion.section variants={fadeItem}>
-              <JellyseerSection requests={jellyseerData.requests} recentlyAdded={jellyseerData.recentlyAdded} />
+              <JellyseerSection
+                requests={jellyseerData.requests}
+                recentlyAdded={jellyseerData.recentlyAdded}
+              />
             </motion.section>
 
-            {/* SYSTEM STATUS & NETWORK */}
-            <motion.div variants={fadeItem} className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <section>
-                <h2 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-slate-400" />
-                  État de l'infrastructure
-                </h2>
-                <div className="flex flex-wrap gap-3">
-                  <StatusBadge label="Docker Host Mode" active={true} />
-                  <StatusBadge label="Tailscale VPN" active={true} />
-                  <StatusBadge label="Real Debrid" active={true} />
-                </div>
-              </section>
-
-              <section>
-                <h2 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-                  <Network className="w-5 h-5 text-slate-400" />
-                  Réseau & Système
-                </h2>
-                <div className="bg-glass border border-glassBorder rounded-2xl p-5 flex flex-wrap justify-between gap-4">
-                  <div>
-                    <p className="text-xs text-slate-400 mb-1">Host OS</p>
-                    <p className="text-sm font-medium text-white">{systemData.os}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400 mb-1">Uptime</p>
-                    <p className="text-sm font-medium text-white">{systemData.uptime}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400 mb-1">Latence</p>
-                    <p className="text-sm font-mono text-cyan-400">24ms</p>
+            {/* Infrastructure status */}
+            <motion.section variants={fadeItem}>
+              <SectionHeader icon={Activity} label="État de l'infrastructure" />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-glass border border-glassBorder rounded-2xl p-5 space-y-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Services actifs</p>
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge label="Docker Host Mode" active={true} />
+                    <StatusBadge label="Tailscale VPN" active={true} />
+                    <StatusBadge label="Real Debrid" active={true} />
                   </div>
                 </div>
-              </section>
-            </motion.div>
+                <div className="bg-glass border border-glassBorder rounded-2xl p-5">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Système</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: 'Host OS', value: systemData.os },
+                      { label: 'Uptime',  value: systemData.uptime },
+                      { label: 'VPN IP',  value: systemData.ip, mono: true }
+                    ].map(({ label, value, mono }) => (
+                      <div key={label}>
+                        <p className="text-[10px] text-slate-500 mb-0.5">{label}</p>
+                        <p className={`text-xs font-medium text-white ${mono ? 'font-mono text-cyan-400' : ''} truncate`}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.section>
 
-            {/* DOCKER & TAILSCALE */}
-            <motion.div variants={fadeItem} className="grid grid-cols-1 lg:grid-cols-2 gap-8 pb-10">
-              <section>
-                <h2 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-                  <Package className="w-5 h-5 text-cyan-400" />
-                  Conteneurs Docker
-                </h2>
+            {/* Docker + Tailscale */}
+            <motion.section variants={fadeItem} className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-10">
+              <div>
+                <SectionHeader icon={Package} label="Conteneurs Docker" accent="cyan" />
                 <DockerList containers={dockerContainers} />
-              </section>
-
-              <section>
-                <h2 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                  Réseau Tailscale
-                </h2>
+              </div>
+              <div>
+                <SectionHeader icon={Network} label="Réseau Tailscale" accent="emerald" />
                 <TailscaleList devices={tailscaleDevices} />
-              </section>
-            </motion.div>
+              </div>
+            </motion.section>
+
           </motion.div>
-        </div>
+        </main>
       </div>
     </div>
+  );
+}
+
+// Reusable section header
+function SectionHeader({ icon: Icon, label, accent = 'cyan' }: { icon: any; label: string; accent?: string }) {
+  const color = accent === 'emerald' ? 'text-emerald-400' : 'text-cyan-400';
+  return (
+    <h2 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+      <Icon className={`w-4 h-4 ${color}`} />
+      {label}
+    </h2>
   );
 }

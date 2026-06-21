@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { CloudRain, Cloud, CloudSnow, CloudLightning, Sun, CloudSun, Droplets, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal, AlertCircle, Film as FilmIcon } from 'lucide-react';
 const fallbackApiBase = `http://${window.location.hostname}:3001/api`;
@@ -256,8 +256,12 @@ const useServiceUpdates = (initialServices: any[] = []) => {
   return services;
 };
 
+type DiskInfo = { path: string; label: string; percent: number; usedGb: number; totalGb: number };
+type RamInfo  = { percent: number; usedGb: number; totalGb: number };
+type Resources = { cpu: number; ram: RamInfo; disks: DiskInfo[] };
+
 const useSystemResources = () => {
-  const [resources, setResources] = useState<{ cpu: number; ram: number; disks: { path: string; percent: number }[] } | null>(null);
+  const [resources, setResources] = useState<Resources | null>(null);
 
   useEffect(() => {
     const fetchResources = async () => {
@@ -541,7 +545,8 @@ export const GmailWidget = () => {
   );
 };
 
-export const ResourceBar = ({ label, icon: Icon, percentage, color }: any) => (
+// SVG circular gauge — pure SVG, no extra deps
+export const ResourceBar = memo(({ label, icon: Icon, percentage, color }: any) => (
   <div className="mb-4 last:mb-0">
     <div className="flex justify-between text-sm mb-1.5">
       <div className="flex items-center gap-2 text-slate-300">
@@ -549,42 +554,73 @@ export const ResourceBar = ({ label, icon: Icon, percentage, color }: any) => (
       </div>
       <span className="font-mono text-cyan-400">{percentage}%</span>
     </div>
-    <div className="h-2 w-full bg-slate-800/50 rounded-full overflow-hidden">
-      <motion.div 
-        initial={{ width: 0 }} 
-        animate={{ width: `${percentage}%` }} 
-        transition={{ duration: 1, ease: "easeOut" }}
-        className={`h-full rounded-full ${color}`} 
+    <div className="h-1.5 w-full bg-slate-800/50 rounded-full overflow-hidden">
+      <motion.div
+        initial={{ width: 0 }}
+        animate={{ width: `${percentage}%` }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className={`h-full rounded-full ${color}`}
       />
     </div>
   </div>
-);
+));
 
-const diskColors = [
-  'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]',
-  'bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.5)]',
-  'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.5)]',
-];
+// Circular SVG gauge for the resources widget
+const CircularGauge = memo(({ pct, color, size = 80 }: { pct: number; color: string; size?: number }) => {
+  const r = (size - 10) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} className="-rotate-90" aria-hidden>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={6} />
+      <motion.circle
+        cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke={color} strokeWidth={6} strokeLinecap="round"
+        strokeDasharray={circ}
+        initial={{ strokeDashoffset: circ }}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 0.9, ease: 'easeOut' }}
+      />
+    </svg>
+  );
+});
+
+const GAUGE_COLORS = ['#f59e0b', '#a78bfa', '#fb7185']; // amber, violet, rose for disks
 
 export const ResourcesWidget = () => {
   const resources = useSystemResources();
-  const cpu = resources?.cpu ?? 0;
-  const ram = resources?.ram ?? 0;
+  const cpu  = resources?.cpu ?? 0;
+  const ram  = resources?.ram  ?? { percent: 0, usedGb: 0, totalGb: 0 };
   const disks = resources?.disks ?? [];
 
+  const gauges = useMemo(() => [
+    { label: 'CPU',  pct: cpu,         sub: `${cpu}%`,                       color: '#22d3ee', icon: Cpu      },
+    { label: 'RAM',  pct: ram.percent,  sub: `${ram.usedGb}/${ram.totalGb} Go`, color: '#34d399', icon: Activity },
+    ...disks.map((d, i) => ({
+      label: d.label,
+      pct:   d.percent,
+      sub:   `${d.usedGb}/${d.totalGb} Go`,
+      color: GAUGE_COLORS[i % GAUGE_COLORS.length],
+      icon:  HardDrive
+    }))
+  ], [cpu, ram, disks]);
+
   return (
-    <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
-      <ResourceBar label="CPU" icon={Cpu} percentage={cpu} color="bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]" />
-      <ResourceBar label="RAM" icon={Activity} percentage={ram} color="bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" />
-      {disks.map((d, i) => (
-        <ResourceBar
-          key={d.path}
-          label={d.path === '/host_root' ? '/' : d.path}
-          icon={HardDrive}
-          percentage={d.percent}
-          color={diskColors[i % diskColors.length]}
-        />
-      ))}
+    <motion.div whileHover={{ scale: 1.01 }} className={`${GlassStyle} ${CardHover}`}>
+      <div className="flex items-center justify-around gap-2">
+        {gauges.map(({ label, pct, sub, color, icon: Icon }) => (
+          <div key={label} className="flex flex-col items-center gap-1 flex-1">
+            <div className="relative">
+              <CircularGauge pct={pct} color={color} size={72} />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Icon className="w-4 h-4" style={{ color }} />
+              </div>
+            </div>
+            <p className="text-xs font-semibold text-slate-200 text-center">{label}</p>
+            <p className="text-[10px] text-slate-500 text-center leading-tight">{sub}</p>
+          </div>
+        ))}
+      </div>
     </motion.div>
   );
 };
@@ -640,12 +676,12 @@ export const ServiceCard = ({ service }: any) => (
   </motion.a>
 );
 
-export const StatusBadge = ({ label, active }: { label: string, active: boolean }) => (
+export const StatusBadge = memo(({ label, active }: { label: string, active: boolean }) => (
   <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full backdrop-blur-sm">
     <CheckCircle2 className={`w-4 h-4 ${active ? 'text-emerald-400' : 'text-slate-500'}`} />
     <span className="text-sm font-medium text-slate-200">{label}</span>
   </div>
-);
+));
 
 export const TailscaleList = ({ devices: initialDevices }: { devices: any[] }) => {
   const { devices: realDevices, loading } = useTailscaleDevices();
@@ -808,7 +844,7 @@ const getTypeBadge = (type: string | null) => {
   return null;
 };
 
-const RecentlyAddedCard = ({ item }: { item: any }) => {
+const RecentlyAddedCard = memo(({ item }: { item: any }) => {
   const type = getTypeBadge(item.type);
   const avail = getAvailabilityIcon(item.mediaStatus);
   return (
@@ -835,9 +871,9 @@ const RecentlyAddedCard = ({ item }: { item: any }) => {
       </div>
     </div>
   );
-};
+});
 
-const RequestCard = ({ item }: { item: any }) => {
+const RequestCard = memo(({ item }: { item: any }) => {
   const type = getTypeBadge(item.type);
   const status = getRequestStatusBadge(item.requestStatus, item.mediaStatus);
   return (
@@ -895,9 +931,9 @@ const RequestCard = ({ item }: { item: any }) => {
       </div>
     </div>
   );
-};
+});
 
-export const JellyseerSection = ({ requests, recentlyAdded }: { requests: any[]; recentlyAdded: any[] }) => (
+export const JellyseerSection = memo(({ requests, recentlyAdded }: { requests: any[]; recentlyAdded: any[] }) => (
   <div className="space-y-8">
     <h2 className="text-xl font-semibold text-white">Seerr</h2>
 
@@ -923,7 +959,7 @@ export const JellyseerSection = ({ requests, recentlyAdded }: { requests: any[];
       </div>
     </div>
   </div>
-);
+));
 
 export const DockerList = ({ containers: initialContainers }: { containers: any[] }) => {
   const { containers: realContainers, loading } = useDockerContainers();

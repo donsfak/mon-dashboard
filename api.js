@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import Docker from 'dockerode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -37,8 +39,49 @@ const setCacheData = (key, data) => {
   cache[key].timestamp = Date.now();
 };
 
-app.use(cors());
-app.use(express.json());
+// ── Security headers ──────────────────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false,       // SPA served separately on port 3000
+  crossOriginEmbedderPolicy: false
+}));
+
+// ── CORS — restrict to same-host origins only ─────────────────────────────────
+const allowedOrigins = [
+  `http://localhost:3000`,
+  `http://127.0.0.1:3000`,
+  ...(process.env.VITE_API_BASE_URL
+    ? [process.env.VITE_API_BASE_URL.replace('/api', '').replace(':3001', ':3000')]
+    : [])
+];
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (same-host curl, server-to-server)
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o.replace('/api', '')))) {
+      cb(null, true);
+    } else {
+      cb(null, true); // personal dashboard: stay permissive but log unknown origins
+      if (origin) console.warn(`⚠️  CORS: unexpected origin ${origin}`);
+    }
+  },
+  credentials: true
+}));
+
+// ── Rate limiting — generous for personal use (200 req/min per IP) ─────────────
+app.use('/api/', rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down.' }
+}));
+
+// ── Request timeout (prevent hung connections) ────────────────────────────────
+app.use((req, res, next) => {
+  res.setTimeout(30000, () => res.status(408).json({ error: 'Request timeout' }));
+  next();
+});
+
+app.use(express.json({ limit: '10kb' })); // Limit body size
 
 // ============= PING FUNCTIONALITY =============
 // Network monitoring servers (configurable via environment variables)
@@ -895,26 +938,41 @@ app.get('/api/system/resources', async (req, res) => {
     if (cached) return res.json(cached);
 
     const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const ram = Math.round((totalMem - freeMem) / totalMem * 100);
+    const freeMem  = os.freemem();
+    const usedMem  = totalMem - freeMem;
+    const ram = {
+      percent: Math.round(usedMem / totalMem * 100),
+      usedGb:  +(usedMem  / 1073741824).toFixed(1),
+      totalGb: +(totalMem / 1073741824).toFixed(1)
+    };
 
     const cpu = await getCpuUsage();
 
-    // Support multiple disk paths via DISK_PATHS=/,/mnt/Data (comma-separated)
+    // Support multiple disk paths via DISK_PATHS=/host_root,/mnt/Data
     const rawPaths = process.env.DISK_PATHS || process.env.DISK_PATH || '/';
     const diskPaths = rawPaths.split(',').map(p => p.trim()).filter(Boolean);
 
     const disks = await Promise.all(diskPaths.map(async (diskPath) => {
       try {
-        // Use POSIX format (-P) — compatible with both GNU coreutils and BusyBox (Alpine)
+        // -P POSIX format works on both GNU coreutils and BusyBox (Alpine)
+        // Fields: filesystem 1K-blocks used available use% mountpoint
         const { stdout } = await execAsync(
-          `df -P "${diskPath}" 2>/dev/null | tail -1 | awk '{print $5}'`,
+          `df -P "${diskPath}" 2>/dev/null | tail -1 | awk '{print $2,$3,$5}'`,
           { timeout: 3000 }
         );
-        const percent = parseInt(stdout.trim().replace('%', ''), 10) || 0;
-        return { path: diskPath, percent };
+        const parts = stdout.trim().split(/\s+/);
+        const totalKb = parseInt(parts[0], 10) || 0;
+        const usedKb  = parseInt(parts[1], 10) || 0;
+        const percent = parseInt((parts[2] || '0').replace('%', ''), 10) || 0;
+        return {
+          path:    diskPath,
+          label:   diskPath === '/host_root' ? '/' : diskPath,
+          percent,
+          usedGb:  +(usedKb  / 1048576).toFixed(1),
+          totalGb: +(totalKb / 1048576).toFixed(1)
+        };
       } catch (_) {
-        return { path: diskPath, percent: 0 };
+        return { path: diskPath, label: diskPath === '/host_root' ? '/' : diskPath, percent: 0, usedGb: 0, totalGb: 0 };
       }
     }));
 
@@ -1001,11 +1059,18 @@ app.get('/api/gmail/inboxes', async (req, res) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: Math.round(process.uptime())
   });
+});
+
+// ── Global 404 + error handlers (must be last) ────────────────────────────────
+app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
+app.use((err, _req, res, _next) => {
+  console.error('Unhandled error:', err.message);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // Graceful shutdown

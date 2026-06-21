@@ -33,6 +33,9 @@ RUN npm run build
 # ============================================
 FROM node:20-alpine AS runtime
 
+# DOCKER_GID must match the host docker socket GID (stat -c '%g' /var/run/docker.sock)
+ARG DOCKER_GID=985
+
 # Install runtime dependencies
 RUN apk add --no-cache \
     curl \
@@ -50,9 +53,11 @@ RUN curl -fsSL "https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linu
     rm /tmp/speedtest.tgz && \
     chmod +x /usr/local/bin/speedtest
 
-# Create non-root user for security
+# Create non-root app user + dockerhost group so app can read Docker socket
 RUN addgroup -g 1001 app && \
-    adduser -D -u 1001 -G app app
+    adduser -D -u 1001 -G app app && \
+    addgroup -g ${DOCKER_GID} dockerhost && \
+    adduser app dockerhost
 
 WORKDIR /app
 

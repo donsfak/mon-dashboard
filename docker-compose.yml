@@ -10,10 +10,18 @@ services:
       dockerfile: Dockerfile
       args:
         NODE_ENV: production
-    
+        DOCKER_GID: "985"       # Must match: stat -c '%g' /var/run/docker.sock
+
     container_name: mediahub-dashboard
-    user: "root"
     restart: unless-stopped
+
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW       # Required for fping (ICMP ping)
     
     # Networking
     ports:
