@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { CloudRain, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal, AlertCircle, Film as FilmIcon } from 'lucide-react';
+import { CloudRain, Cloud, CloudSnow, CloudLightning, Sun, CloudSun, Droplets, Cpu, HardDrive, Activity, CheckCircle2, Smartphone, Laptop, Monitor, Package, Zap, Wifi, Signal, AlertCircle, Film as FilmIcon } from 'lucide-react';
 const fallbackApiBase = `http://${window.location.hostname}:3001/api`;
 const envApiBase = import.meta.env.VITE_API_BASE_URL;
 const API_BASE = envApiBase && (!envApiBase.includes('localhost') || window.location.hostname === 'localhost')
@@ -267,6 +267,53 @@ const useServiceUpdates = (initialServices: any[] = []) => {
   return services;
 };
 
+const useSystemResources = () => {
+  const [resources, setResources] = useState<{ cpu: number; ram: number; disks: { path: string; percent: number }[] } | null>(null);
+
+  useEffect(() => {
+    const fetchResources = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/system/resources`);
+        if (res.ok) {
+          const data = await res.json();
+          setResources(data);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch system resources:', err);
+      }
+    };
+
+    fetchResources();
+    const interval = setInterval(fetchResources, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return resources;
+};
+
+const useWeather = () => {
+  const [weather, setWeather] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/weather`);
+        if (res.ok) setWeather(await res.json());
+      } catch (err) {
+        console.warn('Weather fetch failed:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch_();
+    const interval = setInterval(fetch_, 600000); // refresh every 10 min
+    return () => clearInterval(interval);
+  }, []);
+
+  return { weather, loading };
+};
+
 export { useInternetSpeed, useJellyfinMovies, useServiceUpdates, useJellyseerData, useDockerContainers, useGmailData };
 
 export const ClockWidget = () => {
@@ -285,20 +332,66 @@ export const ClockWidget = () => {
   );
 };
 
-export const WeatherWidget = () => (
-  <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
-    <div className="flex justify-between items-start">
-      <div>
-        <p className="text-sm text-slate-400 mb-1">Abidjan, CI</p>
-        <h2 className="text-4xl font-light text-white mb-2">28°<span className="text-xl text-cyan-400 ml-1">C</span></h2>
-        <p className="text-sm text-slate-300">Ressenti 31° • Humidité 82%</p>
+// Map OpenWeatherMap weather IDs → { Icon, color, bg }
+// https://openweathermap.org/weather-conditions
+const getWeatherInfo = (id: number) => {
+  if (id >= 200 && id < 300) return { Icon: CloudLightning, color: 'text-amber-400',  bg: 'bg-amber-500/10'  };
+  if (id >= 300 && id < 400) return { Icon: Droplets,       color: 'text-cyan-300',   bg: 'bg-cyan-500/10'   };
+  if (id >= 500 && id < 600) return { Icon: CloudRain,      color: 'text-cyan-400',   bg: 'bg-cyan-500/10'   };
+  if (id >= 600 && id < 700) return { Icon: CloudSnow,      color: 'text-blue-300',   bg: 'bg-blue-500/10'   };
+  if (id >= 700 && id < 800) return { Icon: Cloud,          color: 'text-slate-400',  bg: 'bg-slate-500/10'  };
+  if (id === 800)             return { Icon: Sun,            color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
+  if (id === 801)             return { Icon: CloudSun,       color: 'text-yellow-300', bg: 'bg-yellow-500/10' };
+  return                             { Icon: Cloud,          color: 'text-slate-300',  bg: 'bg-slate-500/10'  };
+};
+
+export const WeatherWidget = () => {
+  const { weather, loading } = useWeather();
+  const info = weather ? getWeatherInfo(weather.weatherId ?? 800) : null;
+
+  return (
+    <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
+      <div className="flex justify-between items-start mb-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-slate-400 mb-1">
+            {weather ? `${weather.city}, ${weather.country}` : 'Chargement...'}
+          </p>
+          {loading ? (
+            <div className="h-10 w-24 bg-slate-700/50 rounded animate-pulse mb-2" />
+          ) : (
+            <h2 className="text-4xl font-light text-white mb-1">
+              {weather?.temperature ?? '--'}°<span className="text-xl text-cyan-400 ml-1">C</span>
+            </h2>
+          )}
+          {weather?.description && (
+            <p className="text-xs text-slate-400 capitalize mb-1">{weather.description}</p>
+          )}
+        </div>
+        <div className={`p-3 ${info?.bg ?? 'bg-slate-500/10'} rounded-xl flex-shrink-0 ml-3`}>
+          {info ? <info.Icon className={`w-8 h-8 ${info.color}`} /> : <Cloud className="w-8 h-8 text-slate-400" />}
+        </div>
       </div>
-      <div className="p-3 bg-cyan-500/10 rounded-xl">
-        <CloudRain className="w-8 h-8 text-cyan-400" />
-      </div>
-    </div>
-  </motion.div>
-);
+      {loading ? (
+        <div className="h-4 w-40 bg-slate-700/50 rounded animate-pulse" />
+      ) : (
+        <div className="grid grid-cols-3 gap-2 text-xs text-slate-400 border-t border-white/5 pt-3">
+          <div>
+            <p className="text-slate-500 mb-0.5">Ressenti</p>
+            <p className="text-slate-200 font-medium">{weather?.feelsLike ?? '--'}°C</p>
+          </div>
+          <div>
+            <p className="text-slate-500 mb-0.5">Humidité</p>
+            <p className="text-slate-200 font-medium">{weather?.humidity ?? '--'}%</p>
+          </div>
+          <div>
+            <p className="text-slate-500 mb-0.5">Vent</p>
+            <p className="text-slate-200 font-medium">{weather?.windSpeed ?? '--'} m/s</p>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+};
 
 export const CalendarWidget = () => {
   const today = new Date();
@@ -391,7 +484,7 @@ export const GmailWidget = () => {
               className="flex items-center justify-between p-2 rounded hover:bg-white/5 transition-colors"
             >
               <div className="flex items-center gap-2 flex-1">
-                <span className="text-sm text-slate-300 truncate">{inbox.name || inbox.email || `Gmail ${idx + 1}`}</span>
+                <span className="text-sm text-slate-300 truncate">{inbox.label || inbox.email || `Gmail ${idx + 1}`}</span>
               </div>
               <span
                 className={`text-xs font-medium px-2 py-1 rounded-full ${
@@ -431,13 +524,34 @@ export const ResourceBar = ({ label, icon: Icon, percentage, color }: any) => (
   </div>
 );
 
-export const ResourcesWidget = () => (
-  <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
-    <ResourceBar label="CPU" icon={Cpu} percentage={24} color="bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]" />
-    <ResourceBar label="RAM" icon={Activity} percentage={68} color="bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" />
-    <ResourceBar label="/Data" icon={HardDrive} percentage={85} color="bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]" />
-  </motion.div>
-);
+const diskColors = [
+  'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]',
+  'bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.5)]',
+  'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.5)]',
+];
+
+export const ResourcesWidget = () => {
+  const resources = useSystemResources();
+  const cpu = resources?.cpu ?? 0;
+  const ram = resources?.ram ?? 0;
+  const disks = resources?.disks ?? [];
+
+  return (
+    <motion.div whileHover={{ scale: 1.02 }} className={`${GlassStyle} ${CardHover}`}>
+      <ResourceBar label="CPU" icon={Cpu} percentage={cpu} color="bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]" />
+      <ResourceBar label="RAM" icon={Activity} percentage={ram} color="bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" />
+      {disks.map((d, i) => (
+        <ResourceBar
+          key={d.path}
+          label={d.path === '/host_root' ? '/' : d.path}
+          icon={HardDrive}
+          percentage={d.percent}
+          color={diskColors[i % diskColors.length]}
+        />
+      ))}
+    </motion.div>
+  );
+};
 
 export const ServiceCard = ({ service }: any) => (
   <motion.a 

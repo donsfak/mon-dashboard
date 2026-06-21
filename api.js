@@ -4,6 +4,8 @@ import Docker from 'dockerode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { createServer } from 'http';
+import os from 'os';
+import { google } from 'googleapis';
 
 const app = express();
 const execAsync = promisify(exec);
@@ -17,7 +19,9 @@ const cache = {
   jellyfinMovies: { data: null, timestamp: 0, ttl: 30000 },
   serviceUpdates: { data: null, timestamp: 0, ttl: 300000 },
   jellyseerRequests: { data: null, timestamp: 0, ttl: 30000 },
-  jellyseerRecentlyAdded: { data: null, timestamp: 0, ttl: 30000 }
+  jellyseerRecentlyAdded: { data: null, timestamp: 0, ttl: 30000 },
+  gmailInboxes: { data: null, timestamp: 0, ttl: 120000 },
+  systemResources: { data: null, timestamp: 0, ttl: 5000 }
 };
 
 const getCacheData = (key) => {
@@ -655,42 +659,185 @@ app.get('/api/network/orange-speed-test', async (req, res) => {
   }
 });
 
+// ============= WEATHER API =============
+// Uses OpenWeatherMap (https://openweathermap.org)
+// Configure via OPENWEATHER_API_KEY, WEATHER_CITY (or WEATHER_LAT + WEATHER_LON)
+const cache_weather = { data: null, timestamp: 0, ttl: 600000 }; // 10 min
+
+app.get('/api/weather', async (req, res) => {
+  try {
+    if (cache_weather.data && Date.now() - cache_weather.timestamp < cache_weather.ttl) {
+      return res.json(cache_weather.data);
+    }
+
+    const apiKey = process.env.OPENWEATHER_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ error: 'OPENWEATHER_API_KEY not configured' });
+    }
+
+    // Prefer city name if set, otherwise use coordinates
+    const cityName = process.env.WEATHER_CITY || '';
+    const lat = process.env.WEATHER_LAT || '5.3600';
+    const lon = process.env.WEATHER_LON || '-4.0083';
+
+    const query = cityName
+      ? `q=${encodeURIComponent(cityName)}`
+      : `lat=${lat}&lon=${lon}`;
+
+    const url = `https://api.openweathermap.org/data/2.5/weather?${query}&appid=${apiKey}&units=metric&lang=fr`;
+
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(`OpenWeatherMap ${response.status}: ${err.message || response.statusText}`);
+    }
+
+    const json = await response.json();
+
+    const data = {
+      city:        json.name,
+      country:     json.sys?.country || '',
+      temperature: Math.round(json.main.temp),
+      feelsLike:   Math.round(json.main.feels_like),
+      humidity:    json.main.humidity,
+      description: json.weather?.[0]?.description || '',
+      weatherId:   json.weather?.[0]?.id || 800,
+      icon:        json.weather?.[0]?.icon || '01d',
+      windSpeed:   Math.round(json.wind?.speed ?? 0),
+      updatedAt:   new Date().toISOString()
+    };
+
+    cache_weather.data = data;
+    cache_weather.timestamp = Date.now();
+    res.json(data);
+  } catch (error) {
+    console.error('Weather API error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= SYSTEM RESOURCES =============
+// Measure real CPU usage over a 200ms sample window
+const getCpuUsage = () => new Promise((resolve) => {
+  const start = os.cpus().map(cpu => ({ ...cpu.times }));
+  setTimeout(() => {
+    const end = os.cpus().map(cpu => cpu.times);
+    let totalDiff = 0;
+    let idleDiff = 0;
+    start.forEach((s, i) => {
+      const e = end[i];
+      const total = Object.keys(e).reduce((sum, k) => sum + e[k] - s[k], 0);
+      totalDiff += total;
+      idleDiff += e.idle - s.idle;
+    });
+    resolve(totalDiff > 0 ? Math.round(100 - (100 * idleDiff / totalDiff)) : 0);
+  }, 200);
+});
+
+app.get('/api/system/resources', async (req, res) => {
+  try {
+    const cached = getCacheData('systemResources');
+    if (cached) return res.json(cached);
+
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const ram = Math.round((totalMem - freeMem) / totalMem * 100);
+
+    const cpu = await getCpuUsage();
+
+    // Support multiple disk paths via DISK_PATHS=/,/mnt/Data (comma-separated)
+    const rawPaths = process.env.DISK_PATHS || process.env.DISK_PATH || '/';
+    const diskPaths = rawPaths.split(',').map(p => p.trim()).filter(Boolean);
+
+    const disks = await Promise.all(diskPaths.map(async (diskPath) => {
+      try {
+        // Use POSIX format (-P) — compatible with both GNU coreutils and BusyBox (Alpine)
+        const { stdout } = await execAsync(
+          `df -P "${diskPath}" 2>/dev/null | tail -1 | awk '{print $5}'`,
+          { timeout: 3000 }
+        );
+        const percent = parseInt(stdout.trim().replace('%', ''), 10) || 0;
+        return { path: diskPath, percent };
+      } catch (_) {
+        return { path: diskPath, percent: 0 };
+      }
+    }));
+
+    const data = { cpu, ram, disks };
+    setCacheData('systemResources', data);
+    res.json(data);
+  } catch (error) {
+    console.error('System resources error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============= GMAIL API =============
-// Endpoint to get Gmail inboxes and unread counts
+// Parse GMAIL_ACCOUNTS env: "email:label:refreshToken,email2:label2:refreshToken2"
+// The refresh token may contain colons so we only split on the first two.
+const parseGmailAccounts = () => {
+  if (!process.env.GMAIL_ACCOUNTS) return [];
+  return process.env.GMAIL_ACCOUNTS.split(',').flatMap((entry) => {
+    const trimmed = entry.trim();
+    if (!trimmed) return [];
+    const firstColon = trimmed.indexOf(':');
+    const secondColon = trimmed.indexOf(':', firstColon + 1);
+    const email = firstColon === -1 ? trimmed : trimmed.slice(0, firstColon);
+    const label = firstColon === -1 ? 'Inbox'
+      : secondColon === -1 ? trimmed.slice(firstColon + 1)
+      : trimmed.slice(firstColon + 1, secondColon);
+    const refreshToken = secondColon === -1 ? null : trimmed.slice(secondColon + 1) || null;
+    return email ? [{ email, label: label || 'Inbox', refreshToken }] : [];
+  });
+};
+
+// Build an authenticated Gmail client for one account's refresh token.
+const makeGmailClient = (refreshToken) => {
+  const clientId = process.env.GMAIL_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret || !refreshToken) return null;
+  const auth = new google.auth.OAuth2(clientId, clientSecret);
+  auth.setCredentials({ refresh_token: refreshToken });
+  return google.gmail({ version: 'v1', auth });
+};
+
+// Fetch unread count for a single account.
+const fetchUnreadCount = async (gmailClient, email) => {
+  try {
+    const response = await gmailClient.users.labels.get({ userId: 'me', id: 'INBOX' });
+    return response.data.messagesUnread ?? 0;
+  } catch (err) {
+    console.error(`Gmail unread fetch failed for ${email}:`, err.message);
+    throw err;
+  }
+};
+
 app.get('/api/gmail/inboxes', async (req, res) => {
   try {
-    // For now, return mock data until Gmail OAuth is configured
-    // In production, this would integrate with Google API
-    const gmailAccounts = [];
-    
-    // Parse environment variable for Gmail accounts
-    // Format: GMAIL_ACCOUNTS=email1@gmail.com:label1,email2@gmail.com:label2
-    if (process.env.GMAIL_ACCOUNTS) {
-      const accounts = process.env.GMAIL_ACCOUNTS.split(',');
-      accounts.forEach((account) => {
-        const [email, label] = account.trim().split(':');
-        if (email) {
-          gmailAccounts.push({
-            email: email.trim(),
-            label: label?.trim() || 'Inbox',
-            count: 0, // Would fetch real count from Gmail API
-            configured: false // Would be true when Gmail API is set up
-          });
-        }
-      });
+    const cached = getCacheData('gmailInboxes');
+    if (cached) return res.json(cached);
+
+    const accounts = parseGmailAccounts();
+
+    if (accounts.length === 0) {
+      return res.json([{ email: 'your-email@gmail.com', label: 'Inbox', count: 0, configured: false }]);
     }
 
-    // For demo: show placeholder if no real accounts configured
-    if (gmailAccounts.length === 0) {
-      gmailAccounts.push({
-        email: 'your-email@gmail.com',
-        label: 'Inbox',
-        count: 0,
-        configured: false
-      });
-    }
+    const results = await Promise.all(accounts.map(async ({ email, label, refreshToken }) => {
+      const gmailClient = makeGmailClient(refreshToken);
+      if (!gmailClient) {
+        return { email, label, count: 0, configured: false };
+      }
+      try {
+        const count = await fetchUnreadCount(gmailClient, email);
+        return { email, label, count, configured: true };
+      } catch (_) {
+        return { email, label, count: 0, configured: false };
+      }
+    }));
 
-    res.json(gmailAccounts);
+    setCacheData('gmailInboxes', results);
+    res.json(results);
   } catch (error) {
     console.error('Gmail API Error:', error.message);
     res.status(500).json({ error: error.message });

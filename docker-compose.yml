@@ -52,15 +52,35 @@ services:
 
       # Gmail Integration (set in .env)
       GMAIL_ACCOUNTS: ${GMAIL_ACCOUNTS:-}
+      GMAIL_OAUTH_CLIENT_ID: ${GMAIL_OAUTH_CLIENT_ID:-}
+      GMAIL_OAUTH_CLIENT_SECRET: ${GMAIL_OAUTH_CLIENT_SECRET:-}
+
+      # Comma-separated disk paths to monitor
+      DISK_PATHS: ${DISK_PATHS:-/host_root,/mnt/Data}
+
+      # Weather (OpenWeatherMap)
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+      WEATHER_CITY: ${WEATHER_CITY:-}
+      WEATHER_LAT: ${WEATHER_LAT:-5.3600}
+      WEATHER_LON: ${WEATHER_LON:--4.0083}
     
+    # Force Docker to use reliable public DNS (fixes Node.js EAI_AGAIN on bridge networks)
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
     # Volumes for data persistence and Docker socket access
     volumes:
       # Docker socket access (for monitoring)
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      
+
+      # Host filesystem mounts for real disk monitoring
+      - /:/host_root:ro
+      - /mnt/Data:/mnt/Data:ro
+
       # Logs persistence
       - ./logs:/app/logs
-      
+
       # Optional: Data persistence
       - dashboard-data:/app/data
     
