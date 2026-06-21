@@ -429,6 +429,8 @@ app.get('/api/jellyseer/requests', async (req, res) => {
 
     const jellyfinUserId = process.env.JELLYFIN_USER_ID;
     const jellyseerUserId = process.env.JELLYSEERR_USER_ID;
+    const jellyseerBase = process.env.JELLYSEERR_URL?.replace(/\/$/, '');
+
     const requests = await Promise.all((data.results || []).map(async (item) => {
       const mediaType = (item.type || item.media?.mediaType || item.media?.type || '').toLowerCase();
       let title = item.media?.title || item.media?.name || item.title || item.name || null;
@@ -444,16 +446,30 @@ app.get('/api/jellyseer/requests', async (req, res) => {
         }
       }
 
+      // Build avatar URL from relative path
+      const rawAvatar = item.requestedBy?.avatar || null;
+      const avatar = rawAvatar
+        ? (rawAvatar.startsWith('http') ? rawAvatar : `${jellyseerBase}${rawAvatar}`)
+        : null;
+
+      // Season numbers for TV requests
+      const seasons = Array.isArray(item.seasons)
+        ? item.seasons.map(s => s.seasonNumber).filter(n => n != null).sort((a, b) => a - b)
+        : [];
+
       return {
         id: item.id,
         title,
-        year,
+        year: year ? new Date(year).getFullYear() : null,
         type: mediaType || null,
-        status: item.status || item.media?.status || null,
+        requestStatus: item.status || null,       // 1=pending, 2=approved, 3=declined
+        mediaStatus:   item.media?.status || null, // 3=processing, 4=partial, 5=available
         poster: buildPoster(posterPath),
         requestedBy: item.requestedBy?.displayName || item.requestedBy?.username || null,
         requestedByJellyfinId: item.requestedBy?.jellyfinUserId || null,
-        requestedById: item.requestedBy?.id || null
+        requestedById: item.requestedBy?.id || null,
+        avatar,
+        seasons
       };
     }));
 
@@ -505,9 +521,10 @@ app.get('/api/jellyseer/recently-added', async (req, res) => {
       return {
         id: item.id,
         title,
-        year,
+        year: year ? new Date(year).getFullYear() : null,
         type: mediaType || null,
-        poster: buildPoster(posterPath)
+        poster: buildPoster(posterPath),
+        mediaStatus: item.status || null  // 4=partially_available, 5=available
       };
     }));
 

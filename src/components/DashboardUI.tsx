@@ -785,82 +785,141 @@ export const JellyfinMovies = ({ movies: initialMovies }: { movies: any[] }) => 
   );
 };
 
-const getJellyseerStatus = (status: any) => {
-  if (status === 3 || status === 'AVAILABLE') return { label: 'Available', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
-  if (status === 2 || status === 'APPROVED') return { label: 'Approved', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' };
-  if (status === 4 || status === 'PARTIALLY_AVAILABLE') return { label: 'Partial', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
-  if (status === 5 || status === 'PENDING') return { label: 'Pending', color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
-  return { label: 'Requested', color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+// mediaStatus: 3=processing, 4=partial, 5=available
+// requestStatus: 1=pending, 2=approved, 3=declined
+const getRequestStatusBadge = (requestStatus: number | null, mediaStatus: number | null) => {
+  if (mediaStatus === 5) return { label: 'Disponible',              color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
+  if (mediaStatus === 4) return { label: 'Partiellement dispo.',    color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
+  if (mediaStatus === 3) return { label: 'Approuvé',                color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' };
+  if (requestStatus === 1) return { label: 'Demandé',               color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' };
+  return                          { label: 'Demandé',               color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' };
 };
 
-const getMediaTypeBadge = (type: string | null) => {
+const getAvailabilityIcon = (mediaStatus: number | null) => {
+  if (mediaStatus === 5) return { icon: '✓', color: 'bg-emerald-500 text-white' };
+  if (mediaStatus === 4) return { icon: '◑', color: 'bg-amber-500 text-white' };
+  return                        { icon: '−', color: 'bg-slate-600 text-slate-300' };
+};
+
+const getTypeBadge = (type: string | null) => {
   if (!type) return null;
-  const normalized = type.toLowerCase();
-  if (normalized === 'tv') return { label: 'SERIES', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' };
-  if (normalized === 'movie') return { label: 'MOVIE', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
-  return { label: normalized.toUpperCase(), color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+  if (type === 'tv')    return { label: 'SÉRIE', color: 'bg-purple-600/80 text-purple-100' };
+  if (type === 'movie') return { label: 'FILM',  color: 'bg-blue-600/80 text-blue-100' };
+  return null;
+};
+
+const RecentlyAddedCard = ({ item }: { item: any }) => {
+  const type = getTypeBadge(item.type);
+  const avail = getAvailabilityIcon(item.mediaStatus);
+  return (
+    <div className="min-w-[140px] max-w-[140px] flex-shrink-0">
+      <div className="relative h-48 rounded-xl overflow-hidden bg-slate-800 border border-white/5 shadow-lg group">
+        {item.poster ? (
+          <img src={item.poster} alt={item.title} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+        ) : (
+          <div className="absolute inset-0 bg-slate-700 flex items-center justify-center">
+            <FilmIcon className="w-8 h-8 text-slate-500" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
+        {type && (
+          <span className={`absolute top-2 left-2 text-[9px] font-bold px-1.5 py-0.5 rounded ${type.color}`}>{type.label}</span>
+        )}
+        <div className={`absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${avail.color}`}>
+          {avail.icon}
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 p-2">
+          <p className="text-xs font-medium text-white leading-tight line-clamp-2">{item.title}</p>
+          {item.year && <p className="text-[10px] text-slate-400 mt-0.5">{item.year}</p>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const RequestCard = ({ item }: { item: any }) => {
+  const type = getTypeBadge(item.type);
+  const status = getRequestStatusBadge(item.requestStatus, item.mediaStatus);
+  return (
+    <div className="min-w-[320px] max-w-[320px] flex-shrink-0">
+      <div className="relative h-36 rounded-xl overflow-hidden bg-slate-800/80 border border-white/5 shadow-lg group">
+        {/* Blurred poster as background */}
+        {item.poster && (
+          <img src={item.poster} alt="" aria-hidden className="absolute right-0 top-0 h-full w-32 object-cover opacity-40 blur-[1px]" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-900/90 to-transparent" />
+
+        <div className="relative h-full flex p-3 gap-3">
+          {/* Left: info */}
+          <div className="flex-1 flex flex-col justify-between min-w-0">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                {item.year && <span className="text-[10px] text-slate-400">{item.year}</span>}
+                {type && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${type.color}`}>{type.label}</span>}
+              </div>
+              <h4 className="text-sm font-semibold text-white leading-snug line-clamp-2">{item.title}</h4>
+            </div>
+            <div className="space-y-1.5">
+              {item.requestedBy && (
+                <div className="flex items-center gap-1.5">
+                  {item.avatar ? (
+                    <img src={item.avatar} alt="" className="w-4 h-4 rounded-full border border-white/10" />
+                  ) : (
+                    <div className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-[8px] text-cyan-300">
+                      {item.requestedBy[0]?.toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-[11px] text-slate-300 truncate">{item.requestedBy}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                {item.seasons?.length > 0 && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">Saison</span>
+                    {item.seasons.map((s: number) => (
+                      <span key={s} className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-500/30 text-[9px] text-cyan-300 flex items-center justify-center font-medium">{s}</span>
+                    ))}
+                  </div>
+                )}
+                <span className={`text-[9px] px-2 py-0.5 rounded-full border font-medium ${status.color}`}>{status.label}</span>
+              </div>
+            </div>
+          </div>
+          {/* Right: poster thumbnail */}
+          {item.poster && (
+            <div className="w-20 flex-shrink-0 rounded-lg overflow-hidden border border-white/10 shadow-md">
+              <img src={item.poster} alt={item.title} className="w-full h-full object-cover" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export const JellyseerSection = ({ requests, recentlyAdded }: { requests: any[]; recentlyAdded: any[] }) => (
-  <div className="space-y-6">
-    <div className="flex items-center justify-between">
-      <h2 className="text-xl font-semibold text-white">Seerr</h2>
-      <span className="text-xs uppercase tracking-wider text-slate-500">Recent requests</span>
-    </div>
-    <div className="space-y-4">
+  <div className="space-y-8">
+    <h2 className="text-xl font-semibold text-white">Seerr</h2>
+
+    {/* Recently added — shown first like Jellyseerr */}
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-400">Recent requests</p>
-        <span className="text-xs text-slate-500">Showing {requests.length} items</span>
-      </div>
-      <div className="flex gap-4 overflow-x-auto pb-2">
-        {requests.map((item) => {
-          const status = getJellyseerStatus(item.status);
-          const typeBadge = getMediaTypeBadge(item.type);
-          return (
-            <div key={item.id} className="min-w-[180px] max-w-[180px]">
-              <div className="relative h-28 rounded-2xl overflow-hidden bg-slate-800 border border-white/5">
-                {item.poster && (
-                  <img src={item.poster} alt={item.title} className="absolute inset-0 w-full h-full object-cover" />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/10 to-transparent" />
-                {typeBadge && (
-                  <span className={`absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full border ${typeBadge.color}`}>{typeBadge.label}</span>
-                )}
-                <span className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full border ${status.color}`}>{status.label}</span>
-                <div className="absolute bottom-2 left-2 right-2">
-                  <p className="text-sm font-semibold text-white truncate">{item.title}</p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-400">Recently added</p>
+        <p className="text-sm font-medium text-slate-300">Récemment ajoutés</p>
         <span className="text-xs text-slate-500">Showing {recentlyAdded.length} items</span>
       </div>
-      <div className="flex gap-4 overflow-x-auto pb-2">
-        {recentlyAdded.map((item) => {
-          const typeBadge = getMediaTypeBadge(item.type);
-          return (
-            <div key={item.id} className="min-w-[180px] max-w-[180px]">
-              <div className="relative h-28 rounded-2xl overflow-hidden bg-slate-800 border border-white/5">
-                {item.poster && (
-                  <img src={item.poster} alt={item.title} className="absolute inset-0 w-full h-full object-cover" />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/10 to-transparent" />
-                {typeBadge && (
-                  <span className={`absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full border ${typeBadge.color}`}>{typeBadge.label}</span>
-                )}
-                <div className="absolute bottom-2 left-2 right-2">
-                  <p className="text-sm font-semibold text-white truncate">{item.title}</p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+        {recentlyAdded.map((item) => <RecentlyAddedCard key={item.id} item={item} />)}
+      </div>
+    </div>
+
+    {/* Recent requests */}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-300">Demandes récentes →</p>
+        <span className="text-xs text-slate-500">Showing {requests.length} items</span>
+      </div>
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+        {requests.map((item) => <RequestCard key={item.id} item={item} />)}
       </div>
     </div>
   </div>
