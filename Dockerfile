@@ -33,7 +33,7 @@ RUN npm run build
 # ============================================
 FROM node:20-alpine AS runtime
 
-# Install runtime dependencies only (AVEC speedtest-cli)
+# Install runtime dependencies
 RUN apk add --no-cache \
     curl \
     ca-certificates \
@@ -41,8 +41,14 @@ RUN apk add --no-cache \
     fping \
     dumb-init \
     tini \
-    bind-tools \
-    speedtest-cli
+    bind-tools
+
+# Install official Ookla Speedtest CLI (accurate — same engine as speedtest.net)
+RUN curl -fsSL "https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz" \
+      -o /tmp/speedtest.tgz && \
+    tar -xzf /tmp/speedtest.tgz -C /usr/local/bin speedtest && \
+    rm /tmp/speedtest.tgz && \
+    chmod +x /usr/local/bin/speedtest
 
 # Create non-root user for security
 RUN addgroup -g 1001 app && \

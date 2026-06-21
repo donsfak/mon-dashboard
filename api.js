@@ -654,43 +654,67 @@ app.get('/api/network/metrics', async (req, res) => {
 });
 
 // Speed test against Orange servers
-// Speed test against Orange servers (Using official Ookla Speedtest-CLI)
+// Speed test using the official Ookla Speedtest CLI (same engine as speedtest.net)
 app.get('/api/network/orange-speed-test', async (req, res) => {
   try {
-    console.log(`📊 Lancement du vrai Speedtest Ookla (cela peut prendre 20-30 secondes)...`);
-    
-    // On exécute le vrai speedtest en ligne de commande avec une sortie JSON
-    // On alloue un timeout de 60 secondes car un vrai test télécharge de gros fichiers
-    const { stdout } = await execAsync('speedtest-cli --json', { timeout: 60000 });
-    const result = JSON.parse(stdout);
-    
-    // speedtest-cli renvoie les débits en bits par seconde. On convertit en Mbps (Mégabits)
-    const downloadMbps = Math.round(result.download / 1000000);
-    const uploadMbps = Math.round(result.upload / 1000000);
-    const latencyMs = Math.round(result.ping);
-    const serverName = `${result.server.name} - ${result.server.sponsor}`;
-    
-    console.log(`✅ Speedtest terminé : ${downloadMbps} Mbps / ${uploadMbps} Mbps sur ${serverName}`);
+    console.log('📊 Launching official Ookla speedtest (~20-30s)…');
 
-    // On formate les données pour que ton frontend React les affiche correctement
-    const results = {
-      'orange-ci-ookla': {
-        name: serverName,
-        host: result.server.host,
-        timestamp: result.timestamp || new Date().toISOString(),
-        success: true,
-        latency: latencyMs,
-        download: downloadMbps,
-        upload: uploadMbps,
-        method: 'speedtest-cli'
+    // --accept-license --accept-gdpr required for non-interactive use
+    // --format=json gives machine-readable output
+    let stdout;
+    try {
+      ({ stdout } = await execAsync(
+        'speedtest --format=json --accept-license --accept-gdpr',
+        { timeout: 90000 }
+      ));
+    } catch (e) {
+      // Fallback: try speedtest-cli (Python) if official binary not present
+      console.warn('Official speedtest not found, falling back to speedtest-cli');
+      const fallback = await execAsync('speedtest-cli --json', { timeout: 90000 });
+      stdout = fallback.stdout;
+      const r = JSON.parse(stdout);
+      return res.json({
+        'speedtest': {
+          name: `${r.server?.name || ''} - ${r.server?.sponsor || ''}`.trim(),
+          host: r.server?.host || '',
+          timestamp: r.timestamp || new Date().toISOString(),
+          success: true,
+          latency: Math.round(r.ping || 0),
+          download: Math.round((r.download || 0) / 1_000_000),
+          upload: Math.round((r.upload || 0) / 1_000_000),
+          isp: r.client?.isp || '',
+          method: 'speedtest-cli-fallback'
+        }
+      });
+    }
+
+    const r = JSON.parse(stdout);
+
+    // Official CLI returns bandwidth in bytes/sec → convert to Mbps
+    const downloadMbps = Math.round((r.download?.bandwidth || 0) * 8 / 1_000_000);
+    const uploadMbps   = Math.round((r.upload?.bandwidth   || 0) * 8 / 1_000_000);
+    const latencyMs    = Math.round(r.ping?.latency || 0);
+    const serverName   = `${r.server?.name || ''}, ${r.server?.location || ''}`.trim().replace(/^,\s*/, '');
+
+    console.log(`✅ Speedtest done: ↓${downloadMbps} Mbps ↑${uploadMbps} Mbps on ${serverName}`);
+
+    res.json({
+      'speedtest': {
+        name:      serverName,
+        host:      r.server?.host || '',
+        timestamp: r.timestamp || new Date().toISOString(),
+        success:   true,
+        latency:   latencyMs,
+        download:  downloadMbps,
+        upload:    uploadMbps,
+        isp:       r.isp || '',
+        resultUrl: r.result?.url || null,
+        method:    'ookla-official'
       }
-    };
-    
-    res.json(results);
+    });
   } catch (error) {
-    console.error('Speed Test Error:', error.message);
-    // En cas d'échec (pas de connexion, timeout), on renvoie une erreur propre
-    res.status(500).json({ error: 'Le test de débit a échoué. Vérifiez la connexion.' });
+    console.error('Speed test error:', error.message);
+    res.status(500).json({ error: 'Speed test failed. Check network connection.' });
   }
 });
 

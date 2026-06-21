@@ -120,10 +120,13 @@ const useInternetSpeed = () => {
       const data = await res.json();
       const servers = Object.values(data as any[]).filter((s: any) => s.success);
       if (!servers.length) throw new Error('No response');
+      const first = servers[0] as any;
       const result = {
         download: Math.round(servers.reduce((s: number, v: any) => s + (v.download || 0), 0) / servers.length),
         upload:   Math.round(servers.reduce((s: number, v: any) => s + (v.upload   || 0), 0) / servers.length),
-        latency:  Math.round(servers.reduce((s: number, v: any) => s + (v.latency  || 0), 0) / servers.length)
+        latency:  Math.round(servers.reduce((s: number, v: any) => s + (v.latency  || 0), 0) / servers.length),
+        isp:      first?.isp   || null,
+        server:   first?.name  || null
       };
       const now = new Date();
       setSpeed(result);
@@ -479,7 +482,13 @@ export const InternetSpeedWidget = ({ speed, loading, onMeasure, testedAt }: any
           <span className="text-xs text-slate-400">Ping</span>
           <span className="font-mono text-amber-400 font-medium">{speed.latency} ms</span>
         </div>
-        <p className="text-[10px] text-slate-600 pt-1 text-center">Cliquer pour relancer</p>
+        {(speed.isp || speed.server) && (
+          <div className="pt-1 border-t border-white/5">
+            {speed.server && <p className="text-[10px] text-slate-500 truncate">{speed.server}</p>}
+            {speed.isp    && <p className="text-[10px] text-slate-600">{speed.isp}</p>}
+          </div>
+        )}
+        <p className="text-[10px] text-slate-600 text-center">Cliquer pour relancer</p>
       </div>
     ) : (
       <div className="text-center py-1">
